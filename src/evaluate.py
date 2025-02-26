@@ -2,11 +2,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 
-def evaluate_and_plot(model, test_loader, device="cuda"):
+def evaluate_and_plot(model, config, test_loader, save_path, device="cuda", save=True):
+
     model.eval()
-    criterion = nn.MSELoss()
+
+    criterion = config["criterion"]
     test_losses = []
     predictions, targets = [], []
     
@@ -22,6 +25,9 @@ def evaluate_and_plot(model, test_loader, device="cuda"):
     test_losses = np.array(test_losses)
     predictions = np.array(predictions)
     targets = np.array(targets)
+
+    # Save all test losses
+    np.save(os.path.join(save_path, "test_losses.npy"), test_losses)
     
     # Get top 5 and bottom 5 examples based on loss
     top_5_idx = test_losses.argsort()[-5:][::-1]  # Highest loss
@@ -29,6 +35,7 @@ def evaluate_and_plot(model, test_loader, device="cuda"):
     
     # Plot results
     _, axes = plt.subplots(5, 2, figsize=(10, 15))
+    plt.suptitle("Mean Test Loss: {:.4f}".format(test_losses.mean()))
     for i, idx in enumerate(top_5_idx):
         axes[i, 0].imshow(predictions[idx][0], cmap='coolwarm')
         axes[i, 0].set_title(f"Top {i+1} - Prediction (Loss: {test_losses[idx]:.4f})")
@@ -42,5 +49,5 @@ def evaluate_and_plot(model, test_loader, device="cuda"):
         axes[i, 1].set_title(f"Bottom {i+1} - Target")
     
     plt.tight_layout()
-    plt.show()
-    print(f"Test Loss: {test_losses.mean():.4f}")
+    if save:
+        plt.savefig(os.path.join(save_path, "evaluation_results.png")) 

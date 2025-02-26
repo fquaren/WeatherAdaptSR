@@ -1,16 +1,20 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import os
 import numpy as np
 
 
-def train_loop(model, train_loader, val_loader, save_path, num_epochs=50, lr=1e-4, patience=10, device="cuda"):
-    model.to(device)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+def train_model(model, train_loader, val_loader, config, device, save_path):
+        
+    num_epochs = config["num_epochs"]
+    patience = config["patience"]
     
+    criterion = config["criterion"]
+    
+    optimizer = config["optimizer"](model.parameters(), **config["optimizer_params"])
+    scheduler = config["scheduler"](config["optimizer"], **config["scheduler_params"])
+
+    model.to(device)
+
     best_val_loss = float("inf")
     train_losses, val_losses = [], []
     early_stop_counter = 0
@@ -59,9 +63,13 @@ def train_loop(model, train_loader, val_loader, save_path, num_epochs=50, lr=1e-
         if early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
+        
+        print("Training complete! Best model saved as:", best_model_path)
     
-    print("Training complete! Best model saved as:", best_model_path)
+        # Save losses data
+        np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
+        np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
+
+        return best_model_path
     
-    # Save losses data
-    np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
-    np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
+    

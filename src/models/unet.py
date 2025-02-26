@@ -5,7 +5,7 @@ class UNet8x(nn.Module):
     def __init__(self):
         super(UNet8x, self).__init__()
         
-        # Elevation Downsampling Block (to match temperature resolution)
+        # Elevation Downsampling Block (to match variable resolution)
         self.downsample_elevation = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 2x downsampling
             nn.ReLU(inplace=True),
@@ -14,12 +14,9 @@ class UNet8x(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 2x downsampling (total 8x)
             nn.ReLU(inplace=True),
         )
-        
-        # # Elevation Upscaling Block (to match temperature resolution)
-        # self.upscale_elevation = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
 
         # Define encoding layers
-        self.encoder1 = self.conv_block(65, 64)  # 32 (from elevation) + 1 (temperature)
+        self.encoder1 = self.conv_block(65, 64)  # 32 (from elevation) + 1 (variable)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
         self.pool = nn.MaxPool2d(2)
@@ -49,18 +46,19 @@ class UNet8x(nn.Module):
             nn.ReLU(inplace=True)
         )
     
-    def forward(self, temperature, elevation):  
-        # Downsample elevation data to match temperature resolution
+    def forward(self, variable, elevation):  
+        # Downsample elevation data to match variable resolution
         elevation_downsampled = self.downsample_elevation(elevation)
         
-        # # Upscale elevation data to match temperature resolution
+        # # Upscale elevation data to match variable resolution
         # elevation_downsampled = self.upscale_elevation(elevation)
 
         # Check dimensions
-        assert temperature.shape[2:] == elevation_downsampled.shape[2:], f"Temperature and elevation dimensions do not match, {temperature.shape[2:], elevation_downsampled.shape[2:]}"
+        assert variable.shape[2:] == elevation_downsampled.shape[2:], \
+            f"Selected variable and elevation dimensions do not match, {variable.shape[2:], elevation_downsampled.shape[2:]}"
 
         # Concatenate the two inputs
-        x = torch.cat((temperature, elevation_downsampled), dim=1)  
+        x = torch.cat((variable, elevation_downsampled), dim=1)  
         
         # Encoder
         e1 = self.encoder1(x)  

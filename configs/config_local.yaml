@@ -1,18 +1,31 @@
 experiment:
-  name: "UNet_8x_baseline"
-  save_dir: "/scratch/fquareng/experiments"
   seed: 0
+  name: "UNet_8x_baseline_T2M"
+  save_dir: "/Users/fquareng/phd/WeatherAdaptSR/experiments"
+  device: "cpu"
+  model: UNet8x()
+
 
 training:
   num_epochs: 50
-  log_every_n_steps: 10
   batch_size: 16
   patience: 5
-  lr: 0.0001
-  device: "cuda"
+  criterion: torch.nn.MSELoss()
+  optimizer: torch.optim.Adam()
+  optimizer_params:
+    lr: 1e-4
+  scheduler: torch.optim.lr_scheduler.StepLR()
+  scheduler_params:
+    step_size: 10
+    gamma: 0.5
+
+test:
+  criterion: torch.nn.MSELoss()
 
 data:
+  data_path: "/Users/fquareng/data/"
+  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
+  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
+  dem_path: "dem_squares"
+  cluster_id: 0
   variable: "T_2M"
-  input_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
-  target_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/1h_2D_sel_cropped_gridded_clustered_threshold"
-  elevation_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"

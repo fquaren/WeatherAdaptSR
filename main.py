@@ -1,44 +1,68 @@
-import argparse
 import os
-from src.models import UNet8x
+import random
+import string
+import torch
+
+# from configs import config_local as config
+from configs import config_curnagl as config
+
 from src.train import train_model
+from src.evaluate import evaluate_and_plot
 from data.dataloader import get_dataloaders
 
 
+# Generate random experiment ID
+def generate_experiment_id(length=4):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+
+# Launch experiment
 def main():
-    data_path = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
-    elevation_dir = os.path.join(data_path, "dem_squares")
-
-    parser = argparse.ArgumentParser(description="Run UNet8x baseline experiment.")
-    parser.add_argument("cluster_id", type=int, help="Cluster ID for data selection")
-    parser.add_argument("exp_id", type=str, help="Experiment ID for logging")
-    args = parser.parse_args()
     
-    cluster_id = args.cluster_id  # Retrieve the cluster ID from arguments
-    exp_id = args.exp_id  # Retrieve the experiment ID from arguments
+    # Set device and seed
+    device = config["experiment"]["device"]
+    if device == "cuda" and torch.cuda.is_available():
+        torch.cuda.manual_seed_all(config["experiment"]["seed"])
+    else:
+        device = "cpu"
 
-    input_dir = os.path.join(data_path, f"1h_2D_sel_cropped_gridded_clustered_threshold_blurred/cluster_{cluster_id}")
-    target_dir = os.path.join(data_path, f"1h_2D_sel_cropped_gridded_clustered_threshold/cluster_{cluster_id}")
-
-    variable = "T_2M"
-
-    exp_dir = f"UNet8x-baseline-T2M/{exp_id}"
-    output_dir = os.path.join("/scratch/fquareng/experiments/", exp_dir)
+    # Setup experiment
+    model = config["experiment"]["model"]
+    exp_path = config["experiment"]["save_dir"]
+    exp_name = config["experiment"]["name"]
+    exp_id = generate_experiment_id()
+    output_dir = os.path.join(exp_path, exp_name, exp_id)
     os.makedirs(output_dir, exist_ok=True)
 
-    batch_size = 16
-    num_epochs = 50
-    patience = 5
-    device = "cuda"
+    # Get data paths
+    data_path = config["data"]["data_path"]
+    input_path = config["data"]["input_path"]
+    target_path = config["data"]["target_path"]
+    variable = config["data"]["variable"]
+    dem_dir = config["data"]["dem_path"] 
+    cluster_id = config["data"]["cluster_id"]
+    input_dir = os.path.join(data_path, input_path, f"cluster_{cluster_id}")
+    assert os.path.exists(input_dir), f"Inputs directory {input_dir} does not exist."
+    target_dir = os.path.join(data_path, target_path, f"cluster_{cluster_id}")
+    assert os.path.exists(target_dir), f"Targets directory {target_dir} does not exist."
 
-    print(f"Running experiment {exp_id} for variable {variable} ...")
-    # best_model_path = os.path.join(output_dir, f"best_model_{exp_id}.pth")
-    train_loader, val_loader, _ = get_dataloaders(variable, input_dir, target_dir, elevation_dir, batch_size)
-    model = UNet8x()
-    train_model(model, train_loader, val_loader, save_path=output_dir, num_epochs=num_epochs, device=device, patience=patience)
-    # model.load_state_dict(torch.load(best_model_path))
-    # model.to(device)
-    # evaluate_and_plot(model, test_loader, device)
+    # Load data
+    train_loader, val_loader, test_loader = get_dataloaders(
+        variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])    
+    
+    # Train model
+    best_model_path = train_model(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        config=config["training"],
+        device=device,
+    )
+
+    # Evaluate model
+    model.load_state_dict(torch.load(best_model_path))
+    model.to(device)
+    evaluate_and_plot(model, test_loader, device)
 
     return 0
 
