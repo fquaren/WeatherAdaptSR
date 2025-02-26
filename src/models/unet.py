@@ -1,43 +1,46 @@
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
 
-class UNet8xBaseline(pl.LightningModule):
-    def __init__(self, lr=1e-4):
-        super(UNet8xBaseline, self).__init__()
-        self.lr = lr
-        self.criterion = nn.MSELoss()
-
-        # Elevation Downsampling
+class UNet8x(nn.Module):
+    def __init__(self):
+        super(UNet8x, self).__init__()
+        
+        # Elevation Downsampling Block (to match temperature resolution)
         self.downsample_elevation = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 2x downsampling
             nn.ReLU(inplace=True),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),  # 2x downsampling (total 4x)
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 2x downsampling (total 8x)
             nn.ReLU(inplace=True),
         )
+        
+        # # Elevation Upscaling Block (to match temperature resolution)
+        # self.upscale_elevation = nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True)
 
-        self.encoder1 = self.conv_block(65, 64)  
+        # Define encoding layers
+        self.encoder1 = self.conv_block(65, 64)  # 32 (from elevation) + 1 (temperature)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
         self.pool = nn.MaxPool2d(2)
+        
+        # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
-
+        
+        # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(256 + 256, 256)
         self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         self.decoder2 = self.conv_block(128 + 128, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(64 + 64, 64)
-
-        self.upconv_final = nn.Sequential(
-            nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2),
-            nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2),
-            nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
-        )
-        self.output = nn.Conv2d(64, 1, kernel_size=1)
-
+        
+        # Additional upsampling layers for 8x resolution
+        self.upconv_final1 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)  # 2x
+        self.upconv_final2 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)  # 4x
+        self.upconv_final3 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)  # 8x
+        self.output = nn.Conv2d(64, 1, kernel_size=1)  # Final output layer
+        
     def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -45,37 +48,44 @@ class UNet8xBaseline(pl.LightningModule):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
-
-    def forward(self, temperature, elevation):
+    
+    def forward(self, temperature, elevation):  
+        # Downsample elevation data to match temperature resolution
         elevation_downsampled = self.downsample_elevation(elevation)
-        x = torch.cat((temperature, elevation_downsampled), dim=1)  
-
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(self.pool(e1))
-        e3 = self.encoder3(self.pool(e2))
-        b = self.bottleneck(self.pool(e3))
-
-        d3 = self.decoder3(torch.cat((self.upconv3(b), e3), dim=1))
-        d2 = self.decoder2(torch.cat((self.upconv2(d3), e2), dim=1))
-        d1 = self.decoder1(torch.cat((self.upconv1(d2), e1), dim=1))
         
-        return self.output(self.upconv_final(d1))
+        # # Upscale elevation data to match temperature resolution
+        # elevation_downsampled = self.upscale_elevation(elevation)
 
-    def training_step(self, batch, batch_idx):
-        temperature, elevation, target = batch
-        output = self.forward(temperature, elevation)
-        loss = self.criterion(output, target)
-        self.log("train_loss", loss, prog_bar=True)
-        return loss
+        # Check dimensions
+        assert temperature.shape[2:] == elevation_downsampled.shape[2:], f"Temperature and elevation dimensions do not match, {temperature.shape[2:], elevation_downsampled.shape[2:]}"
 
-    def validation_step(self, batch, batch_idx):
-        temperature, elevation, target = batch
-        output = self.forward(temperature, elevation)
-        loss = self.criterion(output, target)
-        self.log("val_loss", loss, prog_bar=True)
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        return [optimizer], [scheduler]
+        # Concatenate the two inputs
+        x = torch.cat((temperature, elevation_downsampled), dim=1)  
+        
+        # Encoder
+        e1 = self.encoder1(x)  
+        p1 = self.pool(e1)
+        e2 = self.encoder2(p1)
+        p2 = self.pool(e2)
+        e3 = self.encoder3(p2)
+        p3 = self.pool(e3)
+        
+        # Bottleneck
+        b = self.bottleneck(p3)
+        
+        # Decoder
+        d3 = self.upconv3(b)
+        d3 = torch.cat((d3, e3), dim=1)  # Skip connection
+        d3 = self.decoder3(d3)
+        d2 = self.upconv2(d3)
+        d2 = torch.cat((d2, e2), dim=1)  # Skip connection
+        d2 = self.decoder2(d2)
+        d1 = self.upconv1(d2)
+        d1 = torch.cat((d1, e1), dim=1)  # Skip connection
+        d1 = self.decoder1(d1)
+        
+        # Additional upsampling for 8x resolution
+        d_final1 = self.upconv_final1(d1)
+        d_final2 = self.upconv_final2(d_final1)
+        d_final3 = self.upconv_final3(d_final2)
+        return self.output(d_final3)
