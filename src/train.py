@@ -3,15 +3,16 @@ import os
 import numpy as np
 
 
+
 def train_model(model, train_loader, val_loader, config, device, save_path):
         
+    # Get optimizer, scheduler and criterion  
+    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
+    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
+    criterion = getattr(torch.nn, config["criterion"])()
+
     num_epochs = config["num_epochs"]
     patience = config["patience"]
-    
-    criterion = config["criterion"]
-    
-    optimizer = config["optimizer"](model.parameters(), **config["optimizer_params"])
-    scheduler = config["scheduler"](config["optimizer"], **config["scheduler_params"])
 
     model.to(device)
 

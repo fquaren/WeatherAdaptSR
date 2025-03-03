@@ -2,9 +2,16 @@ experiment:
   seed: 0
   name: "UNet_8x_baseline_T2M"
   save_dir: "/scratch/fquareng/experiments"
-  device: "cpu"
+  device: "gpu"  # {gpu, cpu}
   model: UNet8x()
 
+data:
+  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
+  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
+  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
+  dem_path: "dem_squares"
+  cluster_id: 0
+  variable: "T_2M"
 
 training:
   num_epochs: 50
@@ -19,13 +26,7 @@ training:
     step_size: 10
     gamma: 0.5
 
-test:
+testing:
   criterion: torch.nn.MSELoss()
 
-data:
-  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
-  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
-  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
-  dem_path: "dem_squares"
-  cluster_id: 0
-  variable: "T_2M"
+

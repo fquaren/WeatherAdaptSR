@@ -9,7 +9,7 @@ def evaluate_and_plot(model, config, test_loader, save_path, device="cuda", save
 
     model.eval()
 
-    criterion = config["criterion"]
+    criterion = getattr(torch.nn, config["criterion"])()
     test_losses = []
     predictions, targets = [], []
     
@@ -50,4 +50,6 @@ def evaluate_and_plot(model, config, test_loader, save_path, device="cuda", save
     
     plt.tight_layout()
     if save:
-        plt.savefig(os.path.join(save_path, "evaluation_results.png")) 
+        plt.savefig(os.path.join(save_path, "evaluation_results.png"))
+
+    return test_losses.mean()

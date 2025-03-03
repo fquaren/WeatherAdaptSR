@@ -2,25 +2,8 @@ experiment:
   seed: 0
   name: "UNet_8x_baseline_T2M"
   save_dir: "/Users/fquareng/phd/WeatherAdaptSR/experiments"
-  device: "cpu"
-  model: UNet8x()
-
-
-training:
-  num_epochs: 50
-  batch_size: 16
-  patience: 5
-  criterion: torch.nn.MSELoss()
-  optimizer: torch.optim.Adam()
-  optimizer_params:
-    lr: 1e-4
-  scheduler: torch.optim.lr_scheduler.StepLR()
-  scheduler_params:
-    step_size: 10
-    gamma: 0.5
-
-test:
-  criterion: torch.nn.MSELoss()
+  device: "gpu"  # {gpu, cpu}
+  model: UNet8x
 
 data:
   data_path: "/Users/fquareng/data/"
@@ -29,3 +12,19 @@ data:
   dem_path: "dem_squares"
   cluster_id: 0
   variable: "T_2M"
+
+training:
+  num_epochs: 50
+  batch_size: 4
+  patience: 5
+  criterion: MSELoss
+  optimizer: Adam
+  optimizer_params:
+    lr: 0.0001
+  scheduler: StepLR
+  scheduler_params:
+    step_size: 10
+    gamma: 0.5
+
+testing:
+  criterion: MSELoss
