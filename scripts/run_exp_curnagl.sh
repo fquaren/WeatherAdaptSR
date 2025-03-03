@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name test
+#SBATCH --job-name test_step1
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -22,4 +22,4 @@ export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"
 singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-2.4.sif
 
 source /users/fquareng/.bashrc
-micromamba run -n dwnscl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/main.py
+micromamba run -n dwnscl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/main.py --config cluster

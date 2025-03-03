@@ -2,7 +2,7 @@ experiment:
   seed: 0
   name: "UNet_8x_baseline_T2M"
   save_dir: "/Users/fquareng/phd/WeatherAdaptSR/experiments"
-  device: "gpu"  # {gpu, cpu}
+  device: "gpu"
   model: UNet8x
 
 data:
@@ -15,7 +15,7 @@ data:
 
 training:
   num_epochs: 50
-  batch_size: 4
+  batch_size: 16
   patience: 5
   criterion: MSELoss
   optimizer: Adam

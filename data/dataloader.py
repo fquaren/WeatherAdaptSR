@@ -52,3 +52,37 @@ def get_dataloaders(variable, input_dir, target_dir, elev_file, batch_size=4):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader, test_loader
+
+
+def get_cluster_dataloaders(variable, input_path, target_path, dem_dir, batch_size=4):
+    """
+    Load train and validation DataLoaders for all clusters.
+
+    Args:
+        variable (str): Variable name for dataset.
+        data_root (str): Root directory containing cluster subdirectories.
+        batch_size (int): Batch size for DataLoader.
+
+    Returns:
+        train_loaders (dict): Dictionary of cluster train DataLoaders.
+        val_loaders (dict): Dictionary of cluster validation DataLoaders.
+        test_loaders (dict): Dictionary of cluster testing DataLoaders.
+    """
+    train_loaders, val_loaders, test_loaders = {}, {}, {}
+
+    for cluster_name in os.listdir(input_path):
+        input_dir = os.path.join(input_path, cluster_name)
+        target_dir = os.path.join(target_path, cluster_name)
+
+        # Ensure directories exist
+        if not (os.path.isdir(input_dir) and os.path.isdir(target_dir)):
+            continue
+
+        # Load train and validation data
+        train_loader, val_loader, test_loader = get_dataloaders(variable, input_dir, target_dir, dem_dir, batch_size)
+
+        train_loaders[cluster_name] = train_loader
+        val_loaders[cluster_name] = val_loader
+        test_loaders[cluster_name] = test_loader
+
+    return train_loaders, val_loaders, test_loaders

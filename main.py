@@ -6,12 +6,10 @@ import yaml
 import argparse
 import pandas as pd
 
-from data.dataloader import get_dataloaders
+from data.dataloader import get_dataloaders, get_cluster_dataloaders
 from src.models import unet
-from src.train import train_model
-from src.evaluate import evaluate_and_plot
-
-  # Check if the correct path is listed
+from src.train import train_model, train_model_step_1
+from src.evaluate import evaluate_and_plot, evaluate_and_plot_step_1
 
 
 # Generate random experiment ID
@@ -71,6 +69,7 @@ def main():
     variable = config["data"]["variable"]
     dem_path = config["data"]["dem_path"] 
     cluster_id = config["data"]["cluster_id"]
+
     input_dir = os.path.join(data_path, input_path, f"cluster_{cluster_id}")
     assert os.path.exists(input_dir), f"Inputs directory {input_dir} does not exist."
     target_dir = os.path.join(data_path, target_path, f"cluster_{cluster_id}")
@@ -79,14 +78,17 @@ def main():
     assert os.path.exists(dem_dir), f"DEM directory {dem_dir} does not exist."
 
     # Load data
-    train_loader, val_loader, test_loader = get_dataloaders(
-        variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
-
+    # train_loader, val_loader, test_loader = get_dataloaders(
+    #     variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
+    train_loader, val_loader, test_loader = get_cluster_dataloaders(
+        variable, input_path, target_path, dem_dir, config["training"]["batch_size"])
+    
     # Load model
-    model = getattr(unet, model)()
+    model = getattr(unet, model)
+    model = model().to(device)
     
     # Train model
-    best_model_path = train_model(
+    best_model_path = train_model_step_1(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
@@ -98,7 +100,7 @@ def main():
     # Evaluate model
     model.load_state_dict(torch.load(best_model_path))
     model.to(device)
-    test_loss = evaluate_and_plot(
+    test_loss = evaluate_and_plot_step_1(
         model=model,
         config=config["testing"],
         test_loader=test_loader,

@@ -1,9 +1,9 @@
 experiment:
   seed: 0
-  name: "UNet_8x_baseline_T2M"
+  name: "UNet-8x-baseline-T2M"
   save_dir: "/scratch/fquareng/experiments"
-  device: "gpu"  # {gpu, cpu}
-  model: UNet8x()
+  device: "gpu"
+  model: UNet8x
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
@@ -15,18 +15,18 @@ data:
 
 training:
   num_epochs: 50
-  batch_size: 16
+  batch_size: 4
   patience: 5
-  criterion: torch.nn.MSELoss()
-  optimizer: torch.optim.Adam()
+  criterion: MSELoss
+  optimizer: Adam
   optimizer_params:
-    lr: 1e-4
-  scheduler: torch.optim.lr_scheduler.StepLR()
+    lr: 0.0001
+  scheduler: StepLR
   scheduler_params:
     step_size: 10
     gamma: 0.5
 
 testing:
-  criterion: torch.nn.MSELoss()
+  criterion: MSELoss
 
 
