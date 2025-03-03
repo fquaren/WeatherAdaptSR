@@ -80,18 +80,25 @@ def main():
     # Load data
     # train_loader, val_loader, test_loader = get_dataloaders(
     #     variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
-    train_loader, val_loader, test_loader = get_cluster_dataloaders(
-        variable, input_path, target_path, dem_dir, config["training"]["batch_size"])
+    train_loaders, val_loaders, test_loaders = get_cluster_dataloaders(
+        variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
     
     # Load model
-    model = getattr(unet, model)
-    model = model().to(device)
+    model = getattr(unet, model)()
     
     # Train model
+    # best_model_path = train_model(
+    #     model=model,
+    #     train_loader=train_loader,
+    #     val_loader=val_loader,
+    #     config=config["training"],
+    #     device=device,
+    #     save_path=output_dir
+    # )
     best_model_path = train_model_step_1(
         model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
+        train_loaders=train_loaders,
+        val_loaders=val_loaders,
         config=config["training"],
         device=device,
         save_path=output_dir
@@ -103,7 +110,7 @@ def main():
     test_loss = evaluate_and_plot_step_1(
         model=model,
         config=config["testing"],
-        test_loader=test_loader,
+        test_loader=test_loaders,
         save_path=output_dir,
         device=device)
     

@@ -15,11 +15,11 @@
 #SBATCH --ntasks 1
 #SBATCH --cpus-per-task 1
 #SBATCH --mem 10G
-#SBATCH --time 00:01:00
+#SBATCH --time 00:10:00
 
 module load singularityce/4.1.0
 export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"
 singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-2.4.sif
 
 source /users/fquareng/.bashrc
-micromamba run -n dwnscl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/main.py --config cluster
+micromamba run -n dwnscl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/main.py
