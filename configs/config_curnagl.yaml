@@ -10,7 +10,6 @@ data:
   input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
   target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
   dem_path: "dem_squares"
-  cluster_id: 0
   variable: "T_2M"
 
 training:

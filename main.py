@@ -68,18 +68,15 @@ def main():
     target_path = config["data"]["target_path"]
     variable = config["data"]["variable"]
     dem_path = config["data"]["dem_path"] 
-    cluster_id = config["data"]["cluster_id"]
 
-    input_dir = os.path.join(data_path, input_path, f"cluster_{cluster_id}")
+    input_dir = os.path.join(data_path, input_path)
     assert os.path.exists(input_dir), f"Inputs directory {input_dir} does not exist."
-    target_dir = os.path.join(data_path, target_path, f"cluster_{cluster_id}")
+    target_dir = os.path.join(data_path, target_path)
     assert os.path.exists(target_dir), f"Targets directory {target_dir} does not exist."
     dem_dir = os.path.join(data_path, dem_path)
     assert os.path.exists(dem_dir), f"DEM directory {dem_dir} does not exist."
 
     # Load data
-    # train_loader, val_loader, test_loader = get_dataloaders(
-    #     variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
     train_loaders, val_loaders, test_loaders = get_cluster_dataloaders(
         variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
     
@@ -87,14 +84,6 @@ def main():
     model = getattr(unet, model)()
     
     # Train model
-    # best_model_path = train_model(
-    #     model=model,
-    #     train_loader=train_loader,
-    #     val_loader=val_loader,
-    #     config=config["training"],
-    #     device=device,
-    #     save_path=output_dir
-    # )
     best_model_path = train_model_step_1(
         model=model,
         train_loaders=train_loaders,
