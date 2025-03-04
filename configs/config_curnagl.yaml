@@ -3,7 +3,7 @@ experiment:
   name: "UNet-8x-baseline-T2M"
   save_dir: "/scratch/fquareng/experiments"
   device: "gpu"
-  model: UNet8x
+  model: UNet8x_DO_BN
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
@@ -27,5 +27,3 @@ training:
 
 testing:
   criterion: MSELoss
-
-

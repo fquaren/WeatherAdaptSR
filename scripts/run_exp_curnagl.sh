@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name step1
+#SBATCH --job-name BN
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -15,7 +15,7 @@
 #SBATCH --ntasks 1
 #SBATCH --cpus-per-task 1
 #SBATCH --mem 10G
-#SBATCH --time 12:00:00
+#SBATCH --time 24:00:00
 
 module load singularityce/4.1.0
 export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"

@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 
-
+# Simple train loop
 def train_model(model, train_loader, val_loader, config, device, save_path):
         
     # Get optimizer, scheduler and criterion  
@@ -70,8 +70,9 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
         np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
 
         return best_model_path
-    
- 
+
+
+ # Train loop following step 1 from Häfner et al. 2023
 def train_model_step_1(model, train_loaders, val_loaders, config, device, save_path):
     """
     Train a PyTorch model on multiple data clusters: train on all and validate on the single ones.
