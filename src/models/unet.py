@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Function
+
 
 class UNet8x(nn.Module):
     def __init__(self):
@@ -163,6 +165,127 @@ class UNet8x_DO_BN(nn.Module):
         # Bottleneck
         b = self.bottleneck(p3)
         
+        # Decoder
+        d3 = self.upconv3(b)
+        d3 = torch.cat((d3, e3), dim=1)
+        d3 = self.decoder3(d3)
+        d2 = self.upconv2(d3)
+        d2 = torch.cat((d2, e2), dim=1)
+        d2 = self.decoder2(d2)
+        d1 = self.upconv1(d2)
+        d1 = torch.cat((d1, e1), dim=1)
+        d1 = self.decoder1(d1)
+        
+        # Additional upsampling for 8x resolution
+        d_final1 = self.upconv_final1(d1)
+        d_final2 = self.upconv_final2(d_final1)
+        d_final3 = self.upconv_final3(d_final2)
+        return self.output(d_final3)
+
+
+# Gradient Reversal Layer (for adversarial training)
+class GradientReversal(Function):
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -ctx.alpha * grad_output, None
+
+class UNet8x_DANN(nn.Module):
+    def __init__(self, dropout_prob=0.3, alpha=1.0):
+        super(UNet8x_DANN, self).__init__()
+        self.alpha = alpha  # Weight for gradient reversal
+
+        # Elevation Downsampling Block (to match variable resolution)
+        self.downsample_elevation = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+        )
+
+        # Define encoding layers
+        self.encoder1 = self.conv_block(65, 64, dropout_prob)
+        self.encoder2 = self.conv_block(64, 128, dropout_prob)
+        self.encoder3 = self.conv_block(128, 256, dropout_prob)
+        self.pool = nn.MaxPool2d(2)
+        
+        # Bottleneck
+        self.bottleneck = self.conv_block(256, 512, dropout_prob)
+        
+        # Define decoding layers
+        self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.decoder3 = self.conv_block(256 + 256, 256, dropout_prob)
+        self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.decoder2 = self.conv_block(128 + 128, 128, dropout_prob)
+        self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.decoder1 = self.conv_block(64 + 64, 64, dropout_prob)
+        
+        # Additional upsampling layers for 8x resolution
+        self.upconv_final1 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
+        self.upconv_final2 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
+        self.upconv_final3 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
+        self.output = nn.Conv2d(64, 1, kernel_size=1)
+
+        # Domain Classifier (Adversarial Head)
+        self.domain_classifier = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+        
+    def conv_block(self, in_channels, out_channels, dropout_prob):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_prob),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_prob)
+        )
+    
+    def forward(self, variable, elevation, domain=False):  
+        # Downsample elevation data
+        elevation_downsampled = self.downsample_elevation(elevation)
+
+        # Check dimensions
+        assert variable.shape[2:] == elevation_downsampled.shape[2:], \
+            f"Dimension mismatch: {variable.shape[2:]} vs {elevation_downsampled.shape[2:]}"
+
+        # Concatenate inputs
+        x = torch.cat((variable, elevation_downsampled), dim=1)  
+        
+        # Encoder
+        e1 = self.encoder1(x)  
+        p1 = self.pool(e1)
+        e2 = self.encoder2(p1)
+        p2 = self.pool(e2)
+        e3 = self.encoder3(p2)
+        p3 = self.pool(e3)
+        
+        # Bottleneck
+        b = self.bottleneck(p3)
+
+        # If domain classification, apply gradient reversal and classify domain
+        if domain:
+            reversed_features = GradientReversal.apply(b, self.alpha)
+            flattened = reversed_features.view(reversed_features.shape[0], -1)
+            domain_output = self.domain_classifier(flattened)
+            return domain_output  # Output for domain classification
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
