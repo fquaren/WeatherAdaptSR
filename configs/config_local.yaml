@@ -10,13 +10,13 @@ data:
   input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
   target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
   dem_path: "dem_squares"
-  cluster_id: 0
   variable: "T_2M"
 
 training:
   num_epochs: 50
   batch_size: 16
   patience: 5
+  snapshot_interval: 5
   criterion: MSELoss
   optimizer: Adam
   optimizer_params:

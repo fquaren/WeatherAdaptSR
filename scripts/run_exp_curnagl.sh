@@ -4,12 +4,12 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name BN
+#SBATCH --job-name B3h-2gpus
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
 #SBATCH --partition gpu
-#SBATCH --gres gpu:1
+#SBATCH --gres gpu:2
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1

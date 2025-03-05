@@ -17,6 +17,8 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
     best_val_loss = float("inf")
     train_losses, val_losses = [], []
     early_stop_counter = 0
+    
+    model.to(device)
 
     best_model_path = os.path.join(save_path, "best_model.pth")
     
@@ -96,6 +98,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
 
     num_epochs = config["num_epochs"]
     patience = config["patience"]
+    snapshot_interval = config["snapshot_interval"]
 
     model.to(device)
 
@@ -104,6 +107,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
     early_stop_counter = 0
 
     best_model_path = os.path.join(save_path, "best_model.pth")
+    os.makedirs(save_path, exist_ok=True)  # Ensure save directory exists
     
     for epoch in range(num_epochs):
         model.train()
@@ -131,7 +135,6 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
                 cluster_val_loss = 0.0
                 for temperature, elevation, target in val_loader:
                     temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
-                    output = model(temperature, elevation)
                     cluster_val_loss += criterion(output, target).item()
                 
                 cluster_val_loss /= len(val_loader)
@@ -142,7 +145,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
         
         print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}, Total Val Loss: {total_val_loss:.4f}")
         
-        # Early Stopping
+        # Save the best model
         if total_val_loss < best_val_loss:
             best_val_loss = total_val_loss
             torch.save(model.state_dict(), best_model_path)
@@ -150,6 +153,20 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
         else:
             early_stop_counter += 1
         
+        # Save model snapshots periodically
+        if (epoch + 1) % snapshot_interval == 0:
+            snapshot_path = os.path.join(save_path, f"snapshot_epoch_{epoch+1}.pth")
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": train_loss,
+                "val_loss": total_val_loss
+            }, snapshot_path)
+            print(f"Saved model snapshot: {snapshot_path}")
+        
+        # Early Stopping
         if early_stop_counter >= patience:
             print("Early stopping triggered.")
             break

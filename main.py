@@ -82,6 +82,9 @@ def main():
     
     # Load model
     model = getattr(unet, model)()
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs!")
+        model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     
     # Train model
     best_model_path = train_model_step_1(

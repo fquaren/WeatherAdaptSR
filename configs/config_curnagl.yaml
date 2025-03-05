@@ -3,7 +3,7 @@ experiment:
   name: "UNet-8x-baseline-T2M"
   save_dir: "/scratch/fquareng/experiments"
   device: "gpu"
-  model: UNet8x_DO_BN
+  model: UNet8x
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
@@ -16,6 +16,7 @@ training:
   num_epochs: 50
   batch_size: 4
   patience: 5
+  snapshot_interval: 5
   criterion: MSELoss
   optimizer: Adam
   optimizer_params:
