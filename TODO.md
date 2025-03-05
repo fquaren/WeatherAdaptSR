@@ -1,5 +1,10 @@
 # To do list
 
+## Training
+
+- [ ] Setup checkpoints SLURM jobs
+- [ ] Add training step 2 from Haefner paper
+
 ## Tests
 
 - [ ] Add tests
@@ -7,7 +12,7 @@
 ## Model
 
 - [ ] Engression
-- [ ] DANN
+- [ ] DANN (MSDA)
 - [ ] CorrDiff
 
 ## Misc
