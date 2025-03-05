@@ -135,6 +135,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
                 cluster_val_loss = 0.0
                 for temperature, elevation, target in val_loader:
                     temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+                    output = model(temperature, elevation)
                     cluster_val_loss += criterion(output, target).item()
                 
                 cluster_val_loss /= len(val_loader)
