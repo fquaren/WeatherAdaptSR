@@ -4,18 +4,17 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name B3h-2gpus
+#SBATCH --job-name c0
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
 #SBATCH --partition gpu
-#SBATCH --gres gpu:2
+#SBATCH --gres gpu:1
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --cpus-per-task 1
-#SBATCH --mem 10G
-#SBATCH --time 24:00:00
+#SBATCH --mem 50G
+#SBATCH --time 10:00:00
 
 module load singularityce/4.1.0
 export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"

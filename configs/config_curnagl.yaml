@@ -7,15 +7,15 @@ experiment:
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
-  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred"
-  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold"
+  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred/cluster_0"
+  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold/cluster_0"
   dem_path: "dem_squares"
   variable: "T_2M"
 
 training:
   num_epochs: 50
-  batch_size: 4
-  patience: 5
+  batch_size: 16
+  patience: 10
   snapshot_interval: 5
   criterion: MSELoss
   optimizer: Adam

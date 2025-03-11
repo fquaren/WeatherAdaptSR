@@ -60,18 +60,18 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
             early_stop_counter = 0
         else:
             early_stop_counter += 1
+
+        # Save losses data
+        np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
+        np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
         
         if early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
         
-        print("Training complete! Best model saved as:", best_model_path)
-    
-        # Save losses data
-        np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
-        np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
+    print("Training complete! Best model saved as:", best_model_path)
 
-        return best_model_path
+    return best_model_path
 
 
  # Train loop following step 1 from Häfner et al. 2023
@@ -171,11 +171,11 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
         if early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
+
+        # Save losses data
+        np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
+        np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
     
     print("Training complete! Best model saved as:", best_model_path)
-    
-    # Save losses data
-    np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
-    np.save(os.path.join(save_path, "val_losses.npy"), np.array(val_losses))
 
     return best_model_path

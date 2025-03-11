@@ -24,8 +24,8 @@ def evaluate_and_plot(model, config, test_loader, save_path, device="cuda", save
             targets.append(target.cpu().numpy())
     
     test_losses = np.array(test_losses)
-    predictions = np.array(predictions)
-    targets = np.array(targets)
+    predictions = np.concatenate(predictions, axis=0)
+    targets = np.concatenate(targets, axis=0)
 
     # Save all test losses
     np.save(os.path.join(save_path, "test_losses.npy"), test_losses)
@@ -42,16 +42,20 @@ def evaluate_and_plot(model, config, test_loader, save_path, device="cuda", save
         axes[i, 0].set_title(f"Top {i+1} - Prediction (Loss: {test_losses[idx]:.4f})")
         axes[i, 1].imshow(targets[idx][0], cmap='coolwarm')
         axes[i, 1].set_title(f"Top {i+1} - Target")
+    plt.tight_layout()
+    if save:
+        plt.savefig(os.path.join(save_path, "evaluation_results_best.png"))
     
+    _, axes = plt.subplots(5, 2, figsize=(10, 15))
+    plt.suptitle("Mean Test Loss: {:.4f}".format(test_losses.mean()))
     for i, idx in enumerate(bottom_5_idx):
         axes[i, 0].imshow(predictions[idx][0], cmap='coolwarm')
         axes[i, 0].set_title(f"Bottom {i+1} - Prediction (Loss: {test_losses[idx]:.4f})")
         axes[i, 1].imshow(targets[idx][0], cmap='coolwarm')
         axes[i, 1].set_title(f"Bottom {i+1} - Target")
-    
     plt.tight_layout()
     if save:
-        plt.savefig(os.path.join(save_path, "evaluation_results.png"))
+        plt.savefig(os.path.join(save_path, "evaluation_results_worst.png"))
 
     return test_losses.mean()
 
@@ -110,22 +114,28 @@ def evaluate_and_plot_step_1(model, config, test_loaders, save_path, device="cud
         _, axes = plt.subplots(5, 2, figsize=(10, 15))
         plt.suptitle(f"Mean Test Loss for {cluster_name}: {test_losses.mean():.4f}")
         
+        # Plot results
+        _, axes = plt.subplots(5, 2, figsize=(10, 15))
+        plt.suptitle("Mean Test Loss: {:.4f}".format(test_losses.mean()))
         for i, idx in enumerate(top_5_idx):
             axes[i, 0].imshow(predictions[idx][0], cmap='coolwarm')
             axes[i, 0].set_title(f"Top {i+1} - Prediction (Loss: {test_losses[idx]:.4f})")
             axes[i, 1].imshow(targets[idx][0], cmap='coolwarm')
             axes[i, 1].set_title(f"Top {i+1} - Target")
+        plt.tight_layout()
+        if save:
+            plt.savefig(os.path.join(save_path, f"evaluation_results_best_{cluster_name}.png"))
         
+        _, axes = plt.subplots(5, 2, figsize=(10, 15))
+        plt.suptitle("Mean Test Loss: {:.4f}".format(test_losses.mean()))
         for i, idx in enumerate(bottom_5_idx):
             axes[i, 0].imshow(predictions[idx][0], cmap='coolwarm')
             axes[i, 0].set_title(f"Bottom {i+1} - Prediction (Loss: {test_losses[idx]:.4f})")
             axes[i, 1].imshow(targets[idx][0], cmap='coolwarm')
             axes[i, 1].set_title(f"Bottom {i+1} - Target")
-        
         plt.tight_layout()
         if save:
-            plt.savefig(os.path.join(save_path, f"{cluster_name}_evaluation_results.png"))
-            plt.close()
+            plt.savefig(os.path.join(save_path, f"evaluation_results_worst_{cluster_name}.png"))
 
     # Combine test losses across all clusters and compute the mean
     all_test_losses = np.array(all_test_losses)
