@@ -75,7 +75,7 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
 
 
  # Train loop following step 1 from Häfner et al. 2023
-def train_model_step_1(model, train_loaders, val_loaders, config, device, save_path):
+def train_model_step_1(model, train_loaders, val_loaders, config, device, save_path, model_path=None):
     """
     Train a PyTorch model on multiple data clusters: train on all and validate on the single ones.
     
@@ -86,6 +86,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
         config (dict): Training configuration.
         device (str): Device ('cpu' or 'mps' or 'cuda').
         save_path (str): Directory to save the model.
+        model_path (str, optional): Path to a saved model checkpoint for resuming training.
     
     Returns:
         str: Path to the best model.
@@ -109,6 +110,19 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
     best_model_path = os.path.join(save_path, "best_model.pth")
     os.makedirs(save_path, exist_ok=True)  # Ensure save directory exists
     
+    # Load checkpoint if model_path is provided**
+    if model_path and os.path.exists(model_path):
+        print(f"Loading model checkpoint from {model_path}...")
+        checkpoint = torch.load(model_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        start_epoch = checkpoint["epoch"]
+        train_losses = list(np.load(os.path.join(save_path, "train_losses.npy")))
+        val_losses = list(np.load(os.path.join(save_path, "val_losses.npy")))
+        best_val_loss = checkpoint["val_loss"]
+        print(f"Resuming training from epoch {start_epoch+1}")
+
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
