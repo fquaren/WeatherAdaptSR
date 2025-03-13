@@ -1,14 +1,14 @@
 experiment:
   seed: 0
-  name: "UNet-8x-baseline-T2M"
+  name: "training_on_individual_clusters"
   save_dir: "/scratch/fquareng/experiments"
   device: "gpu"
   model: UNet8x
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/"
-  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred/cluster_0"
-  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold/cluster_0"
+  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred/cluster_1"
+  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold/cluster_1"
   dem_path: "dem_squares"
   variable: "T_2M"
 

@@ -9,12 +9,12 @@
 #SBATCH --error job_errors/%j
 
 #SBATCH --partition gpu
-#SBATCH --gres gpu:1
+#SBATCH --gres gpu:2
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
 #SBATCH --mem 50G
-#SBATCH --time 10:00:00
+#SBATCH --time 12:00:00
 
 module load singularityce/4.1.0
 export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"

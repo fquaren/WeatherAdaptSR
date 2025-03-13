@@ -148,3 +148,13 @@ def evaluate_and_plot_step_1(model, config, test_loaders, save_path, device="cud
     print(f"Mean Test Loss across all clusters: {mean_test_loss:.4f}")
     
     return mean_test_loss
+
+
+def main():
+    # Load experiment settings from experiment directory
+    ## Load best model
+    ## Load config file
+    return
+
+if __name__ == "__main__":
+    main()
