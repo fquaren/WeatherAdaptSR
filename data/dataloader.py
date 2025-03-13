@@ -131,7 +131,7 @@ def get_dataloaders(variable, input_dir, target_dir, elev_file, batch_size=4):
     # Check input and target files contain the same number of samples
     assert len(input_files) == len(target_files), "Number of input and target files must match."
 
-    (train_inputs, train_targets), (val_inputs, val_targets), (test_inputs, test_targets) = split_dataset(input_files, target_files)
+    (train_inputs, train_targets), (val_inputs, val_targets), (test_inputs, test_targets) = split_dataset_3h(input_files, target_files)
 
     train_dataset = SingleVariableDataset(variable, train_inputs, elev_file, train_targets)
     val_dataset = SingleVariableDataset(variable, val_inputs, elev_file, val_targets)

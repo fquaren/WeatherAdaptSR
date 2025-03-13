@@ -87,42 +87,43 @@ def main():
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     
     # Train model
-    best_model_path = train_model(
-        model=model,
-        train_loader=train_loaders,
-        val_loader=val_loaders,
-        config=config["training"],
-        device=device,
-        save_path=output_dir
-    )
-
-    # Train model
-    # best_model_path = train_model_step_1(
+    # best_model_path = train_model(
     #     model=model,
-    #     train_loaders=train_loaders,
-    #     val_loaders=val_loaders,
+    #     train_loader=train_loaders,
+    #     val_loader=val_loaders,
     #     config=config["training"],
     #     device=device,
     #     save_path=output_dir
     # )
 
+    # Train model
+    best_model_path = train_model_step_1(
+        model=model,
+        train_loaders=train_loaders,
+        val_loaders=val_loaders,
+        config=config["training"],
+        device=device,
+        save_path=output_dir,
+        model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/x50d/best_model.pth"
+    )
+
     # Evaluate model
     model.load_state_dict(torch.load(best_model_path))
     model.to(device)
     
-    test_loss = evaluate_and_plot(
-        model=model,
-        config=config["testing"],
-        test_loader=test_loaders,
-        save_path=output_dir,
-        device=device)
-    
-    # test_loss = evaluate_and_plot_step_1(
+    # test_loss = evaluate_and_plot(
     #     model=model,
     #     config=config["testing"],
     #     test_loader=test_loaders,
     #     save_path=output_dir,
     #     device=device)
+    
+    test_loss = evaluate_and_plot_step_1(
+        model=model,
+        config=config["testing"],
+        test_loader=test_loaders,
+        save_path=output_dir,
+        device=device)
     
     print(f"Test loss: {test_loss:.4f}")
     

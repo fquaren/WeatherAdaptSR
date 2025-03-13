@@ -96,8 +96,8 @@ def evaluate_and_plot_step_1(model, config, test_loaders, save_path, device="cud
                 targets.append(target.cpu().numpy())
         
         test_losses = np.array(test_losses)
-        predictions = np.array(predictions)
-        targets = np.array(targets)
+        predictions = np.concatenate(predictions, axis=0)
+        targets = np.concatenate(targets, axis=0)
         
         # Save test losses for the current cluster
         np.save(os.path.join(save_path, f"{cluster_name}_test_losses.npy"), test_losses)
@@ -124,7 +124,7 @@ def evaluate_and_plot_step_1(model, config, test_loaders, save_path, device="cud
             axes[i, 1].set_title(f"Top {i+1} - Target")
         plt.tight_layout()
         if save:
-            plt.savefig(os.path.join(save_path, f"evaluation_results_best_{cluster_name}.png"))
+            plt.savefig(os.path.join(save_path, f"evaluation_results_worst_{cluster_name}.png"))
         
         _, axes = plt.subplots(5, 2, figsize=(10, 15))
         plt.suptitle("Mean Test Loss: {:.4f}".format(test_losses.mean()))
@@ -135,7 +135,7 @@ def evaluate_and_plot_step_1(model, config, test_loaders, save_path, device="cud
             axes[i, 1].set_title(f"Bottom {i+1} - Target")
         plt.tight_layout()
         if save:
-            plt.savefig(os.path.join(save_path, f"evaluation_results_worst_{cluster_name}.png"))
+            plt.savefig(os.path.join(save_path, f"evaluation_results_best_{cluster_name}.png"))
 
     # Combine test losses across all clusters and compute the mean
     all_test_losses = np.array(all_test_losses)
