@@ -159,7 +159,6 @@ def get_cluster_dataloaders(variable, input_path, target_path, dem_dir, batch_si
         test_loaders (dict): Dictionary of cluster testing DataLoaders.
     """
     train_loaders, val_loaders, test_loaders = {}, {}, {}
-    print(input_path)
     for cluster_name in os.listdir(input_path):
         input_dir = os.path.join(input_path, cluster_name)
         target_dir = os.path.join(target_path, cluster_name)

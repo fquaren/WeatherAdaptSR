@@ -8,9 +8,10 @@ import pandas as pd
 
 from data.dataloader import get_dataloaders, get_cluster_dataloaders
 from src.models import unet
-from src.train import train_model, train_model_step_1
+from src.train import train_model, train_model_step_1, train_model_step_2
 from src.evaluate import evaluate_and_plot, evaluate_and_plot_step_1
 
+import glob
 
 # Generate random experiment ID
 def generate_experiment_id(length=4):
@@ -34,15 +35,16 @@ def main():
     
     # Set device and seed
     device = config["experiment"]["device"]
-    if device == "gpu" and torch.cuda.is_available():
-        torch.cuda.manual_seed_all(config["experiment"]["seed"])
-        print("CUDA is available!")
-    if device == "gpu" and torch.backends.mps.is_available():
-        device = torch.device("mps")
-        print("MPS is available!")
-    else:
-        device = torch.device("cpu")
-        print("Neither NVIDIA nor MPS not available, using CPU.")
+    # if device == "gpu" and torch.cuda.is_available():
+    #     torch.cuda.manual_seed_all(config["experiment"]["seed"])
+    #     print("CUDA is available!")
+    #     device = "cuda"
+    # if device == "gpu" and torch.backends.mps.is_available():
+    #     device = torch.device("mps")
+    #     print("MPS is available!")
+    # else:
+    #     device = torch.device("cpu")
+    #     print("Neither NVIDIA nor MPS not available, using CPU.")
 
     # Setup experiment
     model = config["experiment"]["model"]
@@ -79,6 +81,8 @@ def main():
     # Load data
     train_loaders, val_loaders, test_loaders = get_dataloaders(
         variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
+    # train_loaders, val_loaders, _ = get_cluster_dataloaders(
+    #     variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
     
     # Load model
     model = getattr(unet, model)()
@@ -87,29 +91,45 @@ def main():
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     
     # Train model
-    # best_model_path = train_model(
-    #     model=model,
-    #     train_loader=train_loaders,
-    #     val_loader=val_loaders,
-    #     config=config["training"],
-    #     device=device,
-    #     save_path=output_dir
-    # )
-
-    # Train model
-    best_model_path = train_model_step_1(
+    _ = train_model(
         model=model,
-        train_loaders=train_loaders,
-        val_loaders=val_loaders,
+        train_loader=train_loaders,
+        val_loader=val_loaders,
         config=config["training"],
         device=device,
         save_path=output_dir,
-        model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/x50d/best_model.pth"
+        model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/",
+        model_name="checkpoint_epoch_35.pth",
+        froze_encoder=True
     )
 
+    # Pretrain model on all clusters
+    # best_pretrained_model_path = train_model_step_1(
+    #     model=model,
+    #     train_loaders=train_loaders,
+    #     val_loaders=val_loaders,
+    #     config=config["training"],
+    #     device=device,
+    #     save_path=output_dir,
+    #     model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/x50d/",
+    #     model_name="checkpoint_epoch_15.pth"
+    # )
+
+    # Finetune models on each of the clusters
+    # best_pretrained_model_path = "/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/best_model.pth"
+    # train_model_step_2(
+    #     model=model,
+    #     train_loaders=train_loaders,
+    #     val_loaders=val_loaders,
+    #     config=config["training"],
+    #     device=device,
+    #     save_path=output_dir,
+    #     model_path=best_pretrained_model_path,
+    # )
+
     # Evaluate model
-    model.load_state_dict(torch.load(best_model_path))
-    model.to(device)
+    # model.load_state_dict(torch.load(best_model_path))
+    # model.to(device)
     
     # test_loss = evaluate_and_plot(
     #     model=model,
@@ -118,14 +138,14 @@ def main():
     #     save_path=output_dir,
     #     device=device)
     
-    test_loss = evaluate_and_plot_step_1(
-        model=model,
-        config=config["testing"],
-        test_loader=test_loaders,
-        save_path=output_dir,
-        device=device)
+    # test_loss = evaluate_and_plot_step_1(
+    #     model=model,
+    #     config=config["testing"],
+    #     test_loader=test_loaders,
+    #     save_path=output_dir,
+    #     device=device)
     
-    print(f"Test loss: {test_loss:.4f}")
+    # print(f"Test loss: {test_loss:.4f}")
     
     return
 

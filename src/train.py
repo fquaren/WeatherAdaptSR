@@ -1,10 +1,23 @@
 import torch
 import os
 import numpy as np
+from tqdm import tqdm
+
+
+def freeze_UNet8x_encoder(model):
+    for param in model.encoder1.parameters():
+        param.requires_grad = False
+    for param in model.encoder2.parameters():
+        param.requires_grad = False
+    for param in model.encoder3.parameters():
+        param.requires_grad = False
+    for param in model.downsample_elevation.parameters():
+        param.requires_grad = False
+    return model
 
 
 # Simple train loop
-def train_model(model, train_loader, val_loader, config, device, save_path):
+def train_model(model, train_loader, val_loader, config, device, save_path, model_path=None, model_name=None, froze_encoder=False):
         
     # Get optimizer, scheduler and criterion  
     optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
@@ -13,16 +26,30 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
 
     num_epochs = config["num_epochs"]
     patience = config["patience"]
+    snapshot_interval = config["snapshot_interval"]
 
     best_val_loss = float("inf")
     train_losses, val_losses = [], []
     early_stop_counter = 0
+
+    if model_path and os.path.exists(os.path.join(model_path, model_name)):
+        print(f"Loading model checkpoint from {model_path}...")
+        checkpoint = torch.load(os.path.join(model_path, model_name), map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    else:
+        best_val_loss = float("inf")
+
+    if froze_encoder:
+        model = freeze_UNet8x_encoder(model)  # Note: this is model specific!
+        optimizer = optimizer(filter(lambda p: p.requires_grad, model.parameters()), **config["optimizer_params"])
     
     model.to(device)
 
     best_model_path = os.path.join(save_path, "best_model.pth")
     
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         model.train()
         train_loss = 0.0
         
@@ -53,13 +80,31 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
         
         print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
         
-        # Early Stopping
+        # Save the best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), best_model_path)
             early_stop_counter = 0
         else:
             early_stop_counter += 1
+        
+        # Save model snapshots periodically
+        if (epoch + 1) % snapshot_interval == 0:
+            snapshot_path = os.path.join(save_path, f"snapshot_epoch_{epoch+1}.pth")
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": train_loss,
+                "val_loss": val_loss
+            }, snapshot_path)
+            print(f"Saved model snapshot: {snapshot_path}")
+        
+        # Early Stopping
+        if early_stop_counter >= patience:
+            print("Early stopping triggered.")
+            break
 
         # Save losses data
         np.save(os.path.join(save_path, "train_losses.npy"), np.array(train_losses))
@@ -75,7 +120,7 @@ def train_model(model, train_loader, val_loader, config, device, save_path):
 
 
  # Train loop following step 1 from Häfner et al. 2023
-def train_model_step_1(model, train_loaders, val_loaders, config, device, save_path, model_path=None):
+def train_model_step_1(model, train_loaders, val_loaders, config, device, save_path, model_path, model_name):
     """
     Train a PyTorch model on multiple data clusters: train on all and validate on the single ones.
     
@@ -87,6 +132,7 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
         device (str): Device ('cpu' or 'mps' or 'cuda').
         save_path (str): Directory to save the model.
         model_path (str, optional): Path to a saved model checkpoint for resuming training.
+        model_name (str, optional): Name of saved model checkpoint for resuming training.
     
     Returns:
         str: Path to the best model.
@@ -101,9 +147,6 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
     patience = config["patience"]
     snapshot_interval = config["snapshot_interval"]
 
-    model.to(device)
-
-    best_val_loss = float("inf")
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
@@ -111,19 +154,24 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
     os.makedirs(save_path, exist_ok=True)  # Ensure save directory exists
     
     # Load checkpoint if model_path is provided**
-    if model_path and os.path.exists(model_path):
+    if model_path and os.path.exists(os.path.join(model_path, model_name)):
         print(f"Loading model checkpoint from {model_path}...")
-        checkpoint = torch.load(model_path, map_location=device)
+        checkpoint = torch.load(os.path.join(model_path, model_name), map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         start_epoch = checkpoint["epoch"]
-        train_losses = list(np.load(os.path.join(save_path, "train_losses.npy")))
-        val_losses = list(np.load(os.path.join(save_path, "val_losses.npy")))
+        train_losses = list(np.load(os.path.join(model_path, "train_losses.npy")))
+        val_losses = list(np.load(os.path.join(model_path, "val_losses.npy")))
         best_val_loss = checkpoint["val_loss"]
         print(f"Resuming training from epoch {start_epoch+1}")
+    else:
+        start_epoch = 0
+        best_val_loss = float("inf")
+    
+    model.to(device)
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         train_loss = 0.0
         
@@ -193,3 +241,99 @@ def train_model_step_1(model, train_loaders, val_loaders, config, device, save_p
     print("Training complete! Best model saved as:", best_model_path)
 
     return best_model_path
+
+
+ # Train loop following step 2 from Häfner et al. 2023
+def train_model_step_2(model, train_loaders, val_loaders, config, device, save_path, model_path):
+
+    save_path_step_2 = os.path.join(save_path, "finetuning")
+    os.makedirs(save_path_step_2_cluster, exist_ok=True)
+
+    # Get optimizer, scheduler, and criterion  
+    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
+    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
+    criterion = getattr(torch.nn, config["criterion"])()
+
+    num_epochs = config["num_epochs"]
+    patience = config["patience"]
+    snapshot_interval = config["snapshot_interval"]
+
+    train_losses, val_losses = {}, {}
+    early_stop_counter = 0
+
+    for (cluster_name, train_loader), (_, val_loader) in zip(train_loaders.items(), val_loaders.items()):
+
+        save_path_step_2_cluster = os.path.join(save_path_step_2, cluster_name)
+        best_model_path = os.path.join(save_path_step_2_cluster, "best_model.pth")
+        os.makedirs(save_path_step_2_cluster, exist_ok=True)
+
+        # Load best model from pretrain
+        checkpoint = torch.load(os.path.join(model_path), map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        
+        model.to(device)
+        model.train()
+        
+        train_loss = 0.0
+        best_val_loss = float("inf")
+
+        for epoch in range(0, num_epochs):
+            for temperature, elevation, target in train_loader:
+                temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+                optimizer.zero_grad()
+                output = model(temperature, elevation)
+                loss = criterion(output, target)
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+            train_loss /= sum(len(loader) for loader in train_loaders.values())  # Normalize loss
+            train_losses[cluster_name].append(train_loss)
+
+            # Validation Step
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for temperature, elevation, target in val_loader:
+                    temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+                    output = model(temperature, elevation)
+                    val_loss += criterion(output, target).item()
+            
+            val_loss /= len(val_loader)
+            val_losses[cluster_name].append(val_loss)
+            scheduler.step()
+            
+            print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+
+            # Save the best model
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                torch.save(model.state_dict(), best_model_path)
+                early_stop_counter = 0
+            else:
+                early_stop_counter += 1
+            
+            # Save model snapshots periodically
+            if (epoch + 1) % snapshot_interval == 0:
+                snapshot_path = os.path.join(save_path_step_2_cluster, cluster_name, f"snapshot_epoch_{cluster_name}_{epoch+1}.pth")
+                torch.save({
+                    "epoch": epoch + 1,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "train_loss": train_loss,
+                    "val_loss": val_loss
+                }, snapshot_path)
+                print(f"Saved model snapshot: {snapshot_path}")
+            
+            # Early Stopping
+            if early_stop_counter >= patience:
+                print("Early stopping triggered.")
+                break
+
+            # Save losses data
+            np.save(os.path.join(save_path_step_2_cluster, cluster_name, "train_losses.npy"), np.array(train_losses))
+            np.save(os.path.join(save_path_step_2_cluster, cluster_name, "val_losses.npy"), np.array(val_losses))
+                
+    return 0
