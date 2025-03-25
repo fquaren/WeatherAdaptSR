@@ -100,7 +100,7 @@ def main():
         save_path=output_dir,
         model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/",
         model_name="checkpoint_epoch_35.pth",
-        froze_encoder=True
+        fine_tuning=True
     )
 
     # Pretrain model on all clusters

@@ -17,15 +17,12 @@ def freeze_UNet8x_encoder(model):
 
 
 # Simple train loop
-def train_model(model, train_loader, val_loader, config, device, save_path, model_path=None, model_name=None, froze_encoder=False):
+def train_model(model, train_loader, val_loader, config, device, save_path, model_path=None, model_name=None, fine_tuning=False):
         
-    # Get optimizer, scheduler and criterion  
-    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
-    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
     criterion = getattr(torch.nn, config["criterion"])()
 
     num_epochs = config["num_epochs"]
-    patience = config["patience"]
+    patience = config["early_stopping_params"]["patience"]
     snapshot_interval = config["snapshot_interval"]
 
     best_val_loss = float("inf")
@@ -35,20 +32,20 @@ def train_model(model, train_loader, val_loader, config, device, save_path, mode
     if model_path and os.path.exists(os.path.join(model_path, model_name)):
         print(f"Loading model checkpoint from {model_path}...")
         checkpoint = torch.load(os.path.join(model_path, model_name), map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-    else:
-        best_val_loss = float("inf")
+        model.load_state_dict(checkpoint["model_state_dict"])     
 
-    if froze_encoder:
+    if fine_tuning:
         model = freeze_UNet8x_encoder(model)  # Note: this is model specific!
-        optimizer = optimizer(filter(lambda p: p.requires_grad, model.parameters()), **config["optimizer_params"])
+        optimizer = getattr(torch.optim, config["optimizer"])(filter(lambda p: p.requires_grad, model.parameters()), **config["optimizer_params"])
+        scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
+    else:
+        optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
+        scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
     
     model.to(device)
 
     best_model_path = os.path.join(save_path, "best_model.pth")
-    
+
     for epoch in tqdm(range(num_epochs)):
         model.train()
         train_loss = 0.0
@@ -76,12 +73,10 @@ def train_model(model, train_loader, val_loader, config, device, save_path, mode
         
         val_loss /= len(val_loader)
         val_losses.append(val_loss)
-        scheduler.step()
-        
-        print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-        
+        scheduler.step(val_loss)
+                
         # Save the best model
-        if val_loss < best_val_loss:
+        if config["early_stopping"] and val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), best_model_path)
             early_stop_counter = 0
@@ -102,7 +97,7 @@ def train_model(model, train_loader, val_loader, config, device, save_path, mode
             print(f"Saved model snapshot: {snapshot_path}")
         
         # Early Stopping
-        if early_stop_counter >= patience:
+        if config["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
 
