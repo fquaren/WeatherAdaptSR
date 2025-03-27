@@ -1,20 +1,21 @@
 experiment:
   seed: 0
-  name: "finetuning_frozen_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
+  name: "UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
-  model: UNet8x
+  model: UNet8x_DO_BN
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
-  input_path: "1h_2D_sel_cropped_gridded_clustered_threshold_blurred/cluster_0"
-  target_path: "1h_2D_sel_cropped_gridded_clustered_threshold/cluster_0"
+  input_path: "DA/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
+  target_path: "DA/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
   dem_path: "dem_squares"
   variable: "T_2M"
 
 training:
   num_epochs: 50
-  batch_size: 16
+  batch_size: 8
+  num_workers: 4
   early_stopping: True
   early_stopping_params:
     patience: 10
@@ -22,7 +23,7 @@ training:
   criterion: MSELoss
   optimizer: Adam
   optimizer_params:
-    lr: 0.00001
+    lr: 0.0001
   scheduler: ReduceLROnPlateau
   scheduler_params:
     mode: "min"

@@ -16,8 +16,86 @@ def freeze_UNet8x_encoder(model):
     return model
 
 
-# Simple train loop
-def train_model(model, train_loader, val_loader, config, device, save_path, model_path=None, model_name=None, fine_tuning=False):
+# Train loop
+def train_model(model, excluding_cluster, train_loader, val_loader, config, device, save_path):
+    
+    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
+    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
+    criterion = getattr(torch.nn, config["criterion"])()
+
+    num_epochs = config["num_epochs"]
+    patience = config["early_stopping_params"]["patience"]
+    snapshot_interval = config["snapshot_interval"]
+
+    best_val_loss = float("inf")
+    train_losses, val_losses = [], []
+    early_stop_counter = 0
+
+    best_model_path = os.path.join(save_path, excluding_cluster, "best_model.pth")
+
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss = 0.0
+        
+        for temperature, elevation, target in train_loader:
+            temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(temperature, elevation)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+        
+        train_loss /= len(train_loader)
+        train_losses.append(train_loss)
+        
+        # Validation Step
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for temperature, elevation, target in val_loader:
+                temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+                output = model(temperature, elevation)
+                val_loss += criterion(output, target).item()
+        
+        val_loss /= len(val_loader)
+        val_losses.append(val_loss)
+        scheduler.step(val_loss)
+                
+        # Save the best model
+        if config["early_stopping"] and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), best_model_path)
+            early_stop_counter = 0
+        else:
+            early_stop_counter += 1
+        
+        # Save model snapshots periodically
+        if (epoch + 1) % snapshot_interval == 0:
+            snapshot_path = os.path.join(save_path, f"snapshot_epoch_{epoch+1}.pth")
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": train_loss,
+                "val_loss": val_loss
+            }, snapshot_path)
+            print(f"Saved model snapshot: {snapshot_path}")
+        
+        # Early Stopping
+        if config["early_stopping"] and early_stop_counter >= patience:
+            print("Early stopping triggered.")
+            break
+
+        
+    print("Training complete! Best model saved as:", best_model_path)
+
+    return best_model_path, train_losses, val_losses
+
+
+# Finetuning train loop
+def finetune_model(model, train_loader, val_loader, config, device, save_path, model_path=None, model_name=None, fine_tuning=False):
         
     criterion = getattr(torch.nn, config["criterion"])()
 
@@ -32,7 +110,7 @@ def train_model(model, train_loader, val_loader, config, device, save_path, mode
     if model_path and os.path.exists(os.path.join(model_path, model_name)):
         print(f"Loading model checkpoint from {model_path}...")
         checkpoint = torch.load(os.path.join(model_path, model_name), map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])     
+        model.load_state_dict(checkpoint["model_state_dict"])
 
     if fine_tuning:
         model = freeze_UNet8x_encoder(model)  # Note: this is model specific!
@@ -330,5 +408,5 @@ def train_model_step_2(model, train_loaders, val_loaders, config, device, save_p
             # Save losses data
             np.save(os.path.join(save_path_step_2_cluster, cluster_name, "train_losses.npy"), np.array(train_losses))
             np.save(os.path.join(save_path_step_2_cluster, cluster_name, "val_losses.npy"), np.array(val_losses))
-                
+
     return 0

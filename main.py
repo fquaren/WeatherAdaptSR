@@ -6,10 +6,9 @@ import yaml
 import argparse
 import pandas as pd
 
-from data.dataloader import get_dataloaders, get_cluster_dataloaders
+from data.dataloader import get_dataloaders
 from src.models import unet
-from src.train import train_model, train_model_step_1, train_model_step_2
-from src.evaluate import evaluate_and_plot, evaluate_and_plot_step_1
+from src.train import train_model
 
 import glob
 
@@ -35,16 +34,6 @@ def main():
     
     # Set device and seed
     device = config["experiment"]["device"]
-    # if device == "gpu" and torch.cuda.is_available():
-    #     torch.cuda.manual_seed_all(config["experiment"]["seed"])
-    #     print("CUDA is available!")
-    #     device = "cuda"
-    # if device == "gpu" and torch.backends.mps.is_available():
-    #     device = torch.device("mps")
-    #     print("MPS is available!")
-    # else:
-    #     device = torch.device("cpu")
-    #     print("Neither NVIDIA nor MPS not available, using CPU.")
 
     # Setup experiment
     model = config["experiment"]["model"]
@@ -78,30 +67,65 @@ def main():
     dem_dir = os.path.join(data_path, dem_path)
     assert os.path.exists(dem_dir), f"DEM directory {dem_dir} does not exist."
 
-    # Load data
-    train_loaders, val_loaders, test_loaders = get_dataloaders(
-        variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
-    # train_loaders, val_loaders, _ = get_cluster_dataloaders(
-    #     variable, input_dir, target_dir, dem_dir, config["training"]["batch_size"])
-    
     # Load model
     model = getattr(unet, model)()
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
+    model.to(device)
+
     
-    # Train model
-    _ = train_model(
-        model=model,
-        train_loader=train_loaders,
-        val_loader=val_loaders,
-        config=config["training"],
-        device=device,
-        save_path=output_dir,
-        model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/",
-        model_name="checkpoint_epoch_35.pth",
-        fine_tuning=True
+    # Load data 
+    dataloaders = get_dataloaders(
+        input_dir=input_dir,
+        target_dir=target_dir,
+        elev_dir=dem_dir,
+        variable=variable,
+        batch_size=config["training"]["batch_size"],
+        num_workers=config["training"]["num_workers"]
     )
+
+    best_model_path = {}
+    training_losses = {}
+    validation_losses = {}
+
+    # Train in a leave-one-cluster-out cross-validation fashion
+    for excluded_cluster, loaders in dataloaders.items():
+        print(f"Training excluding cluster: {excluded_cluster}")
+        train_loaders = loaders["train"]
+        val_loaders = loaders["val"]
+    
+        cluster_best_model_path, cluster_train_losses, cluster_val_losses  = train_model(
+            model=model,
+            excluding_cluster=excluded_cluster,
+            train_loader=train_loaders,
+            val_loader=val_loaders,
+            config=config["training"],
+            device=device,
+            save_path=output_dir,
+        )
+
+        training_losses[excluded_cluster] = cluster_train_losses
+        validation_losses[excluded_cluster] = cluster_val_losses
+        best_model_path[excluded_cluster] = cluster_best_model_path
+
+        # Save best model path
+        with open(os.path.join(output_dir, "best_model_paths.yaml"), "w") as file:
+            yaml.dump(best_model_path, file)
+
+
+    # # Train model
+    # _ = train_model(
+    #     model=model,
+    #     train_loader=train_loaders,
+    #     val_loader=val_loaders,
+    #     config=config["training"],
+    #     device=device,
+    #     save_path=output_dir,
+    #     model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/",
+    #     model_name="checkpoint_epoch_35.pth",
+    #     fine_tuning=True
+    # )
 
     # Pretrain model on all clusters
     # best_pretrained_model_path = train_model_step_1(
