@@ -127,7 +127,7 @@ def plot_results(evaluation_results, cluster_name, save_path, save=True):
     plt.close(fig)  # Close the figure to free memory
 
 
-def plot_mean_test_loss_matrix(mean_test_loss_matrix, save_path):
+def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
     """"
     Plots the mean test loss matrix for all clusters.
     """
@@ -182,8 +182,8 @@ def main():
     
     # Get dataloaders
     if args.local is not None:
-        input_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
-        target_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
+        input_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
+        target_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
         dem_dir="/Users/fquareng/data/dem_squares"
     else:
         input_dir = config["data"]["input_path"]
@@ -249,7 +249,7 @@ def main():
     print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
     
     # Plot mean test loss matrix
-    plot_mean_test_loss_matrix(mean_test_loss_matrix, exp_path)
+    plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, exp_path)
     print("Mean test loss matrix plotted and saved.")
 
 
