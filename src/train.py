@@ -31,7 +31,28 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
-    os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
+    cluster_dir = os.path.join(save_path, excluding_cluster)
+    if os.path.exists(cluster_dir):
+        print(f"Loading model checkpoint from {cluster_dir}...")
+        checkpoint = torch.load(os.path.join(cluster_dir, "best_model.pth"), map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        start_epoch = checkpoint["epoch"]
+        train_losses = list(np.load(os.path.join(cluster_dir, "train_losses.npy")))
+        val_losses = list(np.load(os.path.join(cluster_dir, "val_losses.npy")))
+        best_val_loss = checkpoint["val_loss"]
+        print(f"Resuming training from epoch {start_epoch+1}")
+    else:
+        start_epoch = 0
+        best_val_loss = float("inf")
+        model.to(device)
+        model.train()
+        # Create directory for saving model
+        os.makedirs(save_path, exist_ok=True)
+        # Create directory for excluding cluster
+        os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
+    
     best_model_path = os.path.join(save_path, excluding_cluster, "best_model.pth")
 
     for epoch in range(num_epochs):
