@@ -163,7 +163,7 @@ def main():
     dataloaders = get_dataloaders(
         input_dir=config["data"]["input_path"],
         target_dir=config["data"]["target_path"],
-        dem_dir=config["data"]["dem_path"],
+        elev_dir=config["data"]["dem_path"],
         variable=config["data"]["variable"],
         batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"]
