@@ -127,11 +127,32 @@ def plot_results(evaluation_results, cluster_name, save_path, save=True):
     plt.close(fig)  # Close the figure to free memory
 
 
+def plot_mean_test_loss_matrix(mean_test_loss_matrix, save_path):
+    """"
+    Plots the mean test loss matrix for all clusters.
+    """
+    # Plot mean test loss matrix
+    fig, ax = plt.subplots(figsize=(10, 8))
+    cax = ax.matshow(mean_test_loss_matrix, cmap='coolwarm')
+    plt.colorbar(cax)
+    ax.set_xticks(np.arange(len(dataloaders)))
+    ax.set_yticks(np.arange(len(dataloaders)))
+    ax.set_xticklabels(list(dataloaders.keys()))
+    ax.set_yticklabels(list(dataloaders.keys()))
+    plt.xlabel("Excluded Cluster")
+    plt.ylabel("Test Cluster")
+    plt.title("Mean Test Loss Matrix")
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_path, "mean_test_loss_matrix.png"))
+    plt.close(fig)  # Close the figure to free memory
+
+
 def main():
     # Get model path from arg command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for evaluation (cpu or cuda)")
     parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
+    parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
     args = parser.parse_args()
     
     # Set device
@@ -160,10 +181,19 @@ def main():
     model = getattr(unet, model_architecture)()
     
     # Get dataloaders
+    if args.local is not None:
+        input_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
+        target_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
+        dem_dir="/Users/fquareng/data/dem_squares"
+    else:
+        input_dir = config["data"]["input_path"]
+        target_dir = config["data"]["target_path"]
+        dem_dir = config["data"]["dem_path"]
+
     dataloaders = get_dataloaders(
-        input_dir=config["data"]["input_path"],
-        target_dir=config["data"]["target_path"],
-        elev_dir=config["data"]["dem_path"],
+        input_dir=input_dir,
+        target_dir=target_dir,
+        elev_dir=dem_dir,
         variable=config["data"]["variable"],
         batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"]
@@ -214,8 +244,14 @@ def main():
             )
             # Compute mean test loss
             mean_test_loss_matrix[i, j] = np.mean(evaluation_results["test_losses"])
-        
-    return
+    # Save mean test loss matrix
+    np.savez(os.path.join(exp_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
+    print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
+    
+    # Plot mean test loss matrix
+    plot_mean_test_loss_matrix(mean_test_loss_matrix, exp_path)
+    print("Mean test loss matrix plotted and saved.")
+
 
 if __name__ == "__main__":
     main()
