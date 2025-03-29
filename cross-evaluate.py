@@ -212,10 +212,12 @@ def main():
         print(f"Evaluating excluding cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
-        snapshot_path = os.path.join(save_path, "best_snapshot.pth")
+        # snapshot_path = os.path.join(save_path, "best_snapshot.pth")
+        snapshot_path = os.path.join(save_path, "best_model.pth")
         if os.path.exists(snapshot_path):
             snapshot = torch.load(os.path.join(snapshot_path))
-            model.load_state_dict(torch.load(snapshot["model_state_dict"]))
+            # model.load_state_dict(torch.load(snapshot["model_state_dict"]))
+            model.load_state_dict(torch.load(snapshot_path))
             print(f"Loaded model from {snapshot_path}")
         else:
             raise FileNotFoundError(f"Snapshot file {snapshot_path} does not exist.")
