@@ -180,7 +180,7 @@ def main():
     mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
     for i, excluded_cluster, loaders in enumerate(dataloaders.items()):
         print(f"Evaluating excluding cluster: {excluded_cluster}")
-        
+
         save_path = os.path.join(exp_path, excluded_cluster)
         snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         if os.path.exists(snapshot_path):
@@ -202,12 +202,12 @@ def main():
                 criterion,
                 test_loader,
                 evaluation_path,
-                device="cuda",
+                device=device,
                 save=True
             )
             # Plot results
             plot_results(
-                evaluation_results,
+                evaluation_results.cpu(),
                 cluster,
                 evaluation_path,
                 save=True
