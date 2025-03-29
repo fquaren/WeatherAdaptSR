@@ -5,6 +5,7 @@ import torch
 import yaml
 import argparse
 import pandas as pd
+import numpy as np
 
 from data.dataloader import get_dataloaders
 from src.models import unet
@@ -85,10 +86,6 @@ def main():
         num_workers=config["training"]["num_workers"]
     )
 
-    best_model_path = {}
-    training_losses = {}
-    validation_losses = {}
-
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster, loaders in dataloaders.items():
         print(f"Training excluding cluster: {excluded_cluster}")
@@ -105,13 +102,12 @@ def main():
             save_path=output_dir,
         )
 
-        training_losses[excluded_cluster] = cluster_train_losses
-        validation_losses[excluded_cluster] = cluster_val_losses
-        best_model_path[excluded_cluster] = cluster_best_model_path
+        np.save(os.path.join(output_dir, f"train_losses_{excluded_cluster}.npy"), np.array(cluster_train_losses))
+        np.save(os.path.join(output_dir, f"val_losses_{excluded_cluster}.npy"), np.array(cluster_val_losses))
 
         # Save best model path
-        with open(os.path.join(output_dir, "best_model_paths.yaml"), "w") as file:
-            yaml.dump(best_model_path, file)
+        with open(os.path.join(output_dir, f"best_model_paths_{excluded_cluster}.yaml"), "w") as file:
+            yaml.dump(cluster_best_model_path, file)
 
 
     # # Train model

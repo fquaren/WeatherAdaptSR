@@ -31,6 +31,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
+    os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
     best_model_path = os.path.join(save_path, excluding_cluster, "best_model.pth")
 
     for epoch in range(num_epochs):
