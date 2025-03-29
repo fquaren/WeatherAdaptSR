@@ -208,7 +208,7 @@ def main():
     # Test in a leave-one-cluster-out cross-validation fashion
     # Compute mean test loss for each cluster
     mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
-    for i, excluded_cluster, loaders in enumerate(dataloaders.items()):
+    for i, (excluded_cluster, loaders) in enumerate(dataloaders.items()):
         print(f"Evaluating excluding cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
@@ -225,7 +225,7 @@ def main():
 
         # Get cluster test loader
         evaluation_path = os.path.join(save_path, "evaluation")
-        for j, cluster, loaders in enumerate(dataloaders.items()):
+        for j, (cluster, loaders) in enumerate(dataloaders.items()):
             test_loader = loaders["cluster"]["test"]
             evaluation_results = evaluate_model(
                 model,
