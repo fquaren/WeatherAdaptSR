@@ -6,12 +6,12 @@ import yaml
 import argparse
 import pandas as pd
 import numpy as np
+import glob
 
 from data.dataloader import get_dataloaders
 from src.models import unet
 from src.train import train_model
 
-import glob
 
 # Generate random experiment ID
 def generate_experiment_id(length=4):
@@ -45,14 +45,22 @@ def main():
     print(f"Experiment ID: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Save config
+    # Save config experiment
+    time = str(pd.Timestamp.now()) 
     with open(os.path.join(output_dir, "config.yaml"), "w") as file:
         yaml.dump(config, file)
-
-    # Log experiment in experiments.csv: (Time, Experiment, Experiment ID, Model)
-    time = str(pd.Timestamp.now()) 
-    with open("experiments.csv", "a") as file:
-        file.write(f"{time},{exp_name},{exp_id},{model}\n")
+        # Save experiment metadata
+        file.write(f"EXPERIENT_ID: {exp_id}\n")
+        file.write(f"EXPERIMENT_DATE: {time}\n")
+        
+    # Log experiment in experiments.csv: (Time, Model, Path)
+    local_dir = "../../work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
+    if os.path.exists(local_dir):
+        if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
+            with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
+                file.write("Time,Model,Path\n")
+        with open(os.path.join(local_dir, "experiments.csv")) as file:
+            file.write(f"{time},{model},{output_dir}\n")
 
     # Get data paths
     data_path = config["data"]["data_path"]
@@ -92,7 +100,7 @@ def main():
         train_loaders = loaders["train"]
         val_loaders = loaders["val"]
     
-        cluster_best_model_path, cluster_train_losses, cluster_val_losses  = train_model(
+        _  = train_model(
             model=model,
             excluding_cluster=excluded_cluster,
             train_loader=train_loaders,
@@ -101,71 +109,6 @@ def main():
             device=device,
             save_path=output_dir,
         )
-
-        np.save(os.path.join(output_dir, f"train_losses_{excluded_cluster}.npy"), np.array(cluster_train_losses))
-        np.save(os.path.join(output_dir, f"val_losses_{excluded_cluster}.npy"), np.array(cluster_val_losses))
-
-        # Save best model path
-        with open(os.path.join(output_dir, f"best_model_paths_{excluded_cluster}.yaml"), "w") as file:
-            yaml.dump(cluster_best_model_path, file)
-
-
-    # # Train model
-    # _ = train_model(
-    #     model=model,
-    #     train_loader=train_loaders,
-    #     val_loader=val_loaders,
-    #     config=config["training"],
-    #     device=device,
-    #     save_path=output_dir,
-    #     model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/",
-    #     model_name="checkpoint_epoch_35.pth",
-    #     fine_tuning=True
-    # )
-
-    # Pretrain model on all clusters
-    # best_pretrained_model_path = train_model_step_1(
-    #     model=model,
-    #     train_loaders=train_loaders,
-    #     val_loaders=val_loaders,
-    #     config=config["training"],
-    #     device=device,
-    #     save_path=output_dir,
-    #     model_path="/scratch/fquareng/experiments/UNet-8x-baseline-T2M/x50d/",
-    #     model_name="checkpoint_epoch_15.pth"
-    # )
-
-    # Finetune models on each of the clusters
-    # best_pretrained_model_path = "/scratch/fquareng/experiments/UNet-8x-baseline-T2M/953m/best_model.pth"
-    # train_model_step_2(
-    #     model=model,
-    #     train_loaders=train_loaders,
-    #     val_loaders=val_loaders,
-    #     config=config["training"],
-    #     device=device,
-    #     save_path=output_dir,
-    #     model_path=best_pretrained_model_path,
-    # )
-
-    # Evaluate model
-    # model.load_state_dict(torch.load(best_model_path))
-    # model.to(device)
-    
-    # test_loss = evaluate_and_plot(
-    #     model=model,
-    #     config=config["testing"],
-    #     test_loader=test_loaders,
-    #     save_path=output_dir,
-    #     device=device)
-    
-    # test_loss = evaluate_and_plot_step_1(
-    #     model=model,
-    #     config=config["testing"],
-    #     test_loader=test_loaders,
-    #     save_path=output_dir,
-    #     device=device)
-    
-    # print(f"Test loss: {test_loss:.4f}")
     
     return
 

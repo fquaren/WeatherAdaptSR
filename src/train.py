@@ -1,7 +1,8 @@
 import torch
 import os
 import numpy as np
-from tqdm import tqdm
+import time
+from torch.utils.tensorboard import SummaryWriter
 
 
 def freeze_UNet8x_encoder(model):
@@ -25,16 +26,15 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
 
     num_epochs = config["num_epochs"]
     patience = config["early_stopping_params"]["patience"]
-    snapshot_interval = config["snapshot_interval"]
 
     best_val_loss = float("inf")
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
     cluster_dir = os.path.join(save_path, excluding_cluster)
-    if os.path.exists(cluster_dir):
-        print(f"Loading model checkpoint from {cluster_dir}...")
-        checkpoint = torch.load(os.path.join(cluster_dir, "best_model.pth"), map_location=device)
+    if os.path.exists(cluster_dir) and os.path.exists(os.path.join(cluster_dir, "best_snapshot.pth")):
+        print(f"Loading model checkpoint from {cluster_dir} ...")
+        checkpoint = torch.load(os.path.join(cluster_dir, "best_snapshot.pth"), map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -44,18 +44,19 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         best_val_loss = checkpoint["val_loss"]
         print(f"Resuming training from epoch {start_epoch+1}")
     else:
+        os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
         start_epoch = 0
         best_val_loss = float("inf")
-        model.to(device)
-        model.train()
-        # Create directory for saving model
-        os.makedirs(save_path, exist_ok=True)
-        # Create directory for excluding cluster
-        os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
-    
-    best_model_path = os.path.join(save_path, excluding_cluster, "best_model.pth")
 
+    # Logging
+    log_file = os.path.join(cluster_dir, "training_log.csv")
+    tensorboard_path = os.path.join(cluster_dir, "tensorboard_logs")
+    writer = SummaryWriter(tensorboard_path)
+    
+    model.to(device)
+    
     for epoch in range(num_epochs):
+        epoch_start_time = time.time()
         model.train()
         train_loss = 0.0
         
@@ -84,17 +85,10 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         val_losses.append(val_loss)
         scheduler.step(val_loss)
                 
-        # Save the best model
-        if config["early_stopping"] and val_loss < best_val_loss:
+        # Save only the latest best model snapshot
+        if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), best_model_path)
-            early_stop_counter = 0
-        else:
-            early_stop_counter += 1
-        
-        # Save model snapshots periodically
-        if (epoch + 1) % snapshot_interval == 0:
-            snapshot_path = os.path.join(save_path, f"snapshot_epoch_{epoch+1}.pth")
+            snapshot_path = os.path.join(save_path, f"best_snapshot.pth")
             torch.save({
                 "epoch": epoch + 1,
                 "model_state_dict": model.state_dict(),
@@ -103,17 +97,35 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
                 "train_loss": train_loss,
                 "val_loss": val_loss
             }, snapshot_path)
-            print(f"Saved model snapshot: {snapshot_path}")
-        
+            early_stop_counter = 0
+        else:
+            early_stop_counter += 1
+
+        # Logging
+        epoch_time = time.time() - epoch_start_time
+        current_lr = optimizer.param_groups[0]['lr']
+        with open(log_file, "a") as f:
+            f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
+
+        writer.add_scalar("Epoch Time", epoch_time, epoch + 1)
+        writer.add_scalar("Loss/Train", train_loss, epoch + 1)
+        writer.add_scalar("Loss/Validation", val_loss, epoch + 1)
+        writer.add_scalar("Learning Rate", current_lr, epoch + 1)
+        writer.add_scalar("Best Validation Loss", best_val_loss, epoch + 1)
+
         # Early Stopping
         if config["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
 
-        
-    print("Training complete! Best model saved as:", best_model_path)
+    print("Training complete! Best model saved as:", snapshot_path)
+    writer.close()
 
-    return best_model_path, train_losses, val_losses
+    # Save losses data
+    np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
+    np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
+
+    return snapshot_path
 
 
 # Finetuning train loop
@@ -146,7 +158,7 @@ def finetune_model(model, train_loader, val_loader, config, device, save_path, m
 
     best_model_path = os.path.join(save_path, "best_model.pth")
 
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
         

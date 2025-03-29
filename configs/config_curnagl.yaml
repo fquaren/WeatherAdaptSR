@@ -19,7 +19,6 @@ training:
   early_stopping: True
   early_stopping_params:
     patience: 10
-  snapshot_interval: 5
   criterion: MSELoss
   optimizer: Adam
   optimizer_params:
