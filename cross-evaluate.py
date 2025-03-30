@@ -36,13 +36,13 @@ def evaluate_model(model, criterion, test_loader, save_path, device="cuda", save
             temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
             output = model(temperature, elevation)
             loss = criterion(output, target).item()
-            test_losses.append(loss.cpu().numpy())
-            predictions.append(output.cpu().numpy())
-            targets.append(target.cpu().numpy())
-            elevations.append(elevation.cpu().numpy())
-            inputs.append(temperature.cpu().numpy())
+            test_losses.append(loss) # .cpu().numpy()
+            predictions.append(output) # .cpu().numpy()
+            targets.append(target) # .cpu().numpy()
+            elevations.append(elevation) # .cpu().numpy()
+            inputs.append(temperature) # .cpu().numpy() 
     
-    test_losses = np.concatenate(test_losses, axis=0)
+    test_losses = np.array(test_losses)
     predictions = np.concatenate(predictions, axis=0)
     targets = np.concatenate(targets, axis=0) 
     elevations = np.concatenate(elevations, axis=0)
@@ -63,7 +63,7 @@ def evaluate_model(model, criterion, test_loader, save_path, device="cuda", save
     return evaluation_results
 
 
-def plot_results(evaluation_results, cluster_name, save_path, save=True):
+def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, save=True):
     """"
     Plots the worst and best 5 examples based on test loss for a given cluster."
     """
@@ -83,7 +83,7 @@ def plot_results(evaluation_results, cluster_name, save_path, save=True):
     
     # Plot results for the current cluster
     fig, axes = plt.subplots(5, 4, figsize=(10, 15))
-    plt.suptitle(f"WORST 5 - Mean Test Loss for {cluster_name}: {test_losses.mean():.4f}")
+    plt.suptitle(f"WORST 5 - Mean Test Loss for model eval on {eval_on_cluster}\nand tested on {cluster_name}: {test_losses.mean():.4f}")
     for i, idx in enumerate(top_5_idx):
         for j, (data, cmap, title) in enumerate(zip(
             [inputs[idx][0], predictions[idx][0], targets[idx][0], elevations[idx][0]], 
@@ -101,10 +101,10 @@ def plot_results(evaluation_results, cluster_name, save_path, save=True):
             cbar.ax.tick_params(labelsize=8)  # Adjust tick size
     plt.tight_layout()
     if save:
-        plt.savefig(os.path.join(save_path, f"evaluation_results_worst_{cluster_name}.png"))
+        plt.savefig(os.path.join(save_path, f"evaluation_results_worst_{eval_on_cluster}_{cluster_name}.png"))
     
     fig, axes = plt.subplots(5, 4, figsize=(10, 15))
-    plt.suptitle(f"BEST 5 - Mean Test Loss for {cluster_name}: {test_losses.mean():.4f}")
+    plt.suptitle(f"BEST 5 - Mean Test Loss for model eval on {eval_on_cluster}\nand tested on {cluster_name}: {test_losses.mean():.4f}")
     for i, idx in enumerate(bottom_5_idx):
         for j, (data, cmap, title) in enumerate(zip(
             [inputs[idx][0], predictions[idx][0], targets[idx][0], elevations[idx][0]], 
@@ -123,7 +123,7 @@ def plot_results(evaluation_results, cluster_name, save_path, save=True):
 
     plt.tight_layout()
     if save:
-        plt.savefig(os.path.join(save_path, f"evaluation_results_best_{cluster_name}.png"))
+        plt.savefig(os.path.join(save_path, f"evaluation_results_best_{eval_on_cluster}_{cluster_name}.png"))
     plt.close(fig)  # Close the figure to free memory
 
 
@@ -150,14 +150,14 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
 def main():
     # Get model path from arg command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use for evaluation (cpu or cuda)")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to use for evaluation (cpu or cuda)")
     parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
     parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
     args = parser.parse_args()
     
     # Set device
     device = args.device
-    print("Using device: ", device)    
+    print("Device: ", device)    
     
     exp_path = args.exp_path
     if exp_path is None:
@@ -190,6 +190,8 @@ def main():
         target_dir = config["data"]["target_path"]
         dem_dir = config["data"]["dem_path"]
 
+    # Get dataloaders
+    print("Getting dataloaders...")
     dataloaders = get_dataloaders(
         input_dir=input_dir,
         target_dir=target_dir,
@@ -198,6 +200,7 @@ def main():
         batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"]
     )
+    print(dataloaders.keys())
 
     # Load criterion
     criterion = getattr(torch.nn, config["testing"]["criterion"])()
@@ -211,13 +214,18 @@ def main():
     for i, (excluded_cluster, loaders) in enumerate(dataloaders.items()):
         print(f"Evaluating excluding cluster: {excluded_cluster}")
 
+        
+        # TODO: Plot training metrics
+
         save_path = os.path.join(exp_path, excluded_cluster)
-        # snapshot_path = os.path.join(save_path, "best_snapshot.pth")
+        evaluation_path = os.path.join(save_path, "evaluation")
+        os.makedirs(evaluation_path, exist_ok=True)
+        # TODO: snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         snapshot_path = os.path.join(save_path, "best_model.pth")
         if os.path.exists(snapshot_path):
-            snapshot = torch.load(os.path.join(snapshot_path))
+            # TODO: snapshot = torch.load(os.path.join(snapshot_path))
             # model.load_state_dict(torch.load(snapshot["model_state_dict"]))
-            model.load_state_dict(torch.load(snapshot_path))
+            model.load_state_dict(torch.load(snapshot_path, map_location=torch.device(device)))
             print(f"Loaded model from {snapshot_path}")
         else:
             raise FileNotFoundError(f"Snapshot file {snapshot_path} does not exist.")
@@ -226,9 +234,10 @@ def main():
         model.to(device)
 
         # Get cluster test loader
-        evaluation_path = os.path.join(save_path, "evaluation")
+        
+        # Evaluate model on the test dataset of the excluded cluster
         for j, (cluster, loaders) in enumerate(dataloaders.items()):
-            test_loader = loaders["cluster"]["test"]
+            test_loader = loaders["test"]
             evaluation_results = evaluate_model(
                 model,
                 criterion,
@@ -239,7 +248,8 @@ def main():
             )
             # Plot results
             plot_results(
-                evaluation_results.cpu(),
+                evaluation_results,
+                excluded_cluster,
                 cluster,
                 evaluation_path,
                 save=True
@@ -253,7 +263,6 @@ def main():
     # Plot mean test loss matrix
     plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, exp_path)
     print("Mean test loss matrix plotted and saved.")
-
 
 if __name__ == "__main__":
     main()
