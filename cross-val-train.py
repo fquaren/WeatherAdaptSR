@@ -24,8 +24,10 @@ def main():
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="curnagl", help="Local or curnagl config")
+    parser.add_argument("--resume_exp", type=str, default=None, help="Local or curnagl config")
     args = parser.parse_args()
     config = "config_local" if args.config == "local" else "config_curnagl"
+    resume_exp = args.resume_exp
     print("Using config: ", config)
 
     # Load local config
@@ -40,7 +42,24 @@ def main():
     model = config["experiment"]["model"]
     exp_path = config["experiment"]["save_dir"]
     exp_name = config["experiment"]["name"]
-    exp_id = generate_experiment_id()
+    
+    # Experiment id
+    if os.path.exists(os.path.join(exp_path, exp_name)):
+        # Get exp id from argparse
+        if resume_exp is None:
+            # Generate a new experiment ID
+            exp_id = generate_experiment_id()
+            print(f"Generated new experiment ID: {exp_id}")
+        else:
+            # Check if the experiment ID already exists
+            existing_ids = [f.split("/")[-1] for f in glob.glob(os.path.join(exp_path, exp_name, "*"))]
+            exp_id = resume_exp
+            print(f"Resuming experiment with ID: {exp_id}")
+            # Check if the experiment ID exists
+            if exp_id in existing_ids:
+                print(f"Found experiment at {os.path.join(exp_path, exp_name, exp_id)} already exists. Resuming training.")
+        
+    # exp_id = generate_experiment_id()
     output_dir = os.path.join(exp_path, exp_name, exp_id)
     print(f"Experiment ID: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)

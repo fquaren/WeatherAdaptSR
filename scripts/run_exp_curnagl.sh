@@ -4,17 +4,17 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name test
+#SBATCH --job-name base
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
 #SBATCH --partition gpu
-#SBATCH --gres gpu:1
+#SBATCH --gres gpu:2
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
 #SBATCH --mem 100G
-#SBATCH --time 00:01:00
+#SBATCH --time 72:00:00
 
 
 module load singularityce/4.1.0

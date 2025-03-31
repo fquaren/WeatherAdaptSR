@@ -212,14 +212,24 @@ def main():
     # Compute mean test loss for each cluster
     mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
     for i, (excluded_cluster, loaders) in enumerate(dataloaders.items()):
-        print(f"Evaluating excluding cluster: {excluded_cluster}")
-
         
-        # TODO: Plot training metrics
+        print(f"Evaluating excluding cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
         evaluation_path = os.path.join(save_path, "evaluation")
         os.makedirs(evaluation_path, exist_ok=True)
+
+        # Plot training metrics
+        train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
+        val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
+        _ = plt.figure()
+        plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
+        plt.plot(train_losses)
+        plt.plot(val_losses)
+        plt.yscale("log")
+        plt.savefig(os.path.join(evaluation_path, f"training_metrics.png"))
+        plt.close()
+
         # TODO: snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         snapshot_path = os.path.join(save_path, "best_model.pth")
         if os.path.exists(snapshot_path):

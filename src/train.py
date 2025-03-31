@@ -5,18 +5,6 @@ import time
 from torch.utils.tensorboard import SummaryWriter
 
 
-def freeze_UNet8x_encoder(model):
-    for param in model.encoder1.parameters():
-        param.requires_grad = False
-    for param in model.encoder2.parameters():
-        param.requires_grad = False
-    for param in model.encoder3.parameters():
-        param.requires_grad = False
-    for param in model.downsample_elevation.parameters():
-        param.requires_grad = False
-    return model
-
-
 # Train loop
 def train_model(model, excluding_cluster, train_loader, val_loader, config, device, save_path):
     
@@ -32,7 +20,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     early_stop_counter = 0
 
     cluster_dir = os.path.join(save_path, excluding_cluster)
-    if os.path.exists(cluster_dir) and os.path.exists(os.path.join(cluster_dir, "best_snapshot.pth")):
+    if os.path.exists(os.path.join(cluster_dir, "best_snapshot.pth")):
         print(f"Loading model checkpoint from {cluster_dir} ...")
         checkpoint = torch.load(os.path.join(cluster_dir, "best_snapshot.pth"), map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -44,6 +32,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         best_val_loss = checkpoint["val_loss"]
         print(f"Resuming training from epoch {start_epoch+1}")
     else:
+        print("No checkpoint found, starting fresh training.")
         os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
         start_epoch = 0
         best_val_loss = float("inf")
@@ -126,6 +115,18 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
 
     return snapshot_path
+
+
+def freeze_UNet8x_encoder(model):
+    for param in model.encoder1.parameters():
+        param.requires_grad = False
+    for param in model.encoder2.parameters():
+        param.requires_grad = False
+    for param in model.encoder3.parameters():
+        param.requires_grad = False
+    for param in model.downsample_elevation.parameters():
+        param.requires_grad = False
+    return model
 
 
 # Finetuning train loop
