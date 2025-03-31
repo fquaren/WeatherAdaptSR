@@ -59,7 +59,7 @@ def main():
         if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
             with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
                 file.write("Time,Model,Path\n")
-        with open(os.path.join(local_dir, "experiments.csv")) as file:
+        with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
             file.write(f"{time},{model},{output_dir}\n")
 
     # Get data paths
