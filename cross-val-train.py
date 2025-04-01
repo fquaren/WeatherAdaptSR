@@ -7,7 +7,7 @@ import argparse
 import pandas as pd
 import glob
 
-from data.dataloader import get_dataloaders, get_source_target_dataloaders
+from data.dataloader import get_dataloaders
 from src.models import unet
 from src.train import train_model_mdan
 
@@ -125,14 +125,9 @@ def main():
     print(f"Number of domains: {num_domains}")
 
     # Train in a leave-one-cluster-out cross-validation fashion
-    for excluded_cluster, loaders in dataloaders.items():
+    for excluded_cluster, (source_dataloader, target_dataloader) in dataloaders.items():
         print(f"Training with {excluded_cluster} as target domain.")
-        
-        # Get train and val loaders
-        source_dataloader, target_dataloader = get_source_target_dataloaders(dataloaders, excluded_cluster)
-        print(f"Source dataloader: {source_dataloader}, batch size: {len(source_dataloader)}")
-        print(f"Target dataloader: {target_dataloader}, batch size: {len(target_dataloader)}")
-    
+
         _  = train_model_mdan(
             model=model,
             excluding_cluster=excluded_cluster,

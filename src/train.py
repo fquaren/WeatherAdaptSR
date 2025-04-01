@@ -85,6 +85,10 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
             t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
             domain_losses.append(t_domain_loss)
 
+            # Convert lists to tensors
+            regression_losses = torch.stack(regression_losses)
+            domain_losses = torch.stack(domain_losses)
+
             # Compute final loss
             if mode == "maxmin":
                 loss = torch.max(regression_losses) + mu * torch.min(domain_losses)
@@ -111,7 +115,7 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
         val_loss /= len(val_loader_target)
         val_losses.append(val_loss)
         scheduler.step(val_loss)
-                
+
         # Save only the latest best model snapshot
         if val_loss < best_val_loss:
             best_val_loss = val_loss

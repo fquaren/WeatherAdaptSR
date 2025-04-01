@@ -646,7 +646,7 @@ class UNet8x_MDAN(nn.Module):
 
         # Domain Classifiers
         self.num_domains = num_domains
-        self.domain_classifiers = nn.ModuleList([nn.Linear(512 * 4 * 4, 2) for _ in range(num_domains)])
+        self.domain_classifiers = nn.ModuleList([nn.Linear(2048, 2) for _ in range(num_domains)])
 
     def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
@@ -679,7 +679,7 @@ class UNet8x_MDAN(nn.Module):
         b = self.bottleneck(p3)
 
         # Flatten bottleneck features for domain classification
-        b_flat = b.view(b.shape[0], -1)  # [batch_size, 512*4*4]
+        b_flat = b.view(b.shape[0], -1)
 
         # Domain Classification (if domain label is provided)
         domain_preds = None

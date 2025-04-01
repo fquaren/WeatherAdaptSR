@@ -4,15 +4,17 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name test_da
+#SBATCH --job-name mdan_max_min
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
-#SBATCH --partition cpu
+#SBATCH --partition gpu
+#SBATCH --gres gpu:2
+#SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
 #SBATCH --mem 100G
-#SBATCH --time 00:10:00
+#SBATCH --time 72:00:00
 
 
 module load singularityce/4.1.0
@@ -22,6 +24,6 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
-# source /dcsrsoft/spack/external/ckptslurmjob/scripts/ckpt_methods.sh
+source /dcsrsoft/spack/external/ckptslurmjob/scripts/ckpt_methods.sh
 
-micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
+launch_app python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
