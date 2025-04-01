@@ -126,6 +126,21 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
         plt.savefig(os.path.join(save_path, f"evaluation_results_best_{eval_on_cluster}_{cluster_name}.png"))
     plt.close(fig)  # Close the figure to free memory
 
+def plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster):
+    # Plot training metrics
+    train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
+    val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
+    _ = plt.figure()
+    plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.yscale("log")
+    plt.savefig(os.path.join(evaluation_path, f"training_metrics.png"))
+    plt.close()
+
 
 def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
     """"
@@ -219,16 +234,7 @@ def main():
         evaluation_path = os.path.join(save_path, "evaluation")
         os.makedirs(evaluation_path, exist_ok=True)
 
-        # Plot training metrics
-        train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
-        val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
-        _ = plt.figure()
-        plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
-        plt.plot(train_losses)
-        plt.plot(val_losses)
-        plt.yscale("log")
-        plt.savefig(os.path.join(evaluation_path, f"training_metrics.png"))
-        plt.close()
+        plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster)
 
         # TODO: snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         snapshot_path = os.path.join(save_path, "best_model.pth")

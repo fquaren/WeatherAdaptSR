@@ -93,6 +93,9 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         # Logging
         epoch_time = time.time() - epoch_start_time
         current_lr = optimizer.param_groups[0]['lr']
+        if epoch == 0:
+            with open(log_file, "w") as f:
+                f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
         with open(log_file, "a") as f:
             f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
