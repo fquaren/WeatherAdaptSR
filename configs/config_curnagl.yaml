@@ -4,7 +4,7 @@ experiment:
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
   model: UNet8x_DO_BN # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise
-  noise_type: "gaussian"
+  noise_type: "gaussian" # "gaussian", "salt_pepper", "speckle", "uniform"
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
