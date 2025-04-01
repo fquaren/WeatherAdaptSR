@@ -463,6 +463,7 @@ class UNet8x_Noise(nn.Module):
         return self.output(d_final3)
 
 
+# Probabilistic UNet for regression
 class UNet8x_Engression(nn.Module):
     def __init__(self, dropout_prob=0.3):
         super(UNet8x_Engression, self).__init__()
