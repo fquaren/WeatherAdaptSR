@@ -489,8 +489,8 @@ class UNet8x_Noise(nn.Module):
         )
 
         # Define encoding layers
-        self.encoder1 = self.conv_block(65, 64, dropout_prob)  
-        self.encoder2 = self.conv_block(64, 128, dropout_prob)
+        self.encoder1 = self.conv_block(65, 64, dropout_prob=0)  
+        self.encoder2 = self.conv_block(64, 128, dropout_prob=0)
         self.encoder3 = self.conv_block(128, 256, dropout_prob)
         self.pool = nn.MaxPool2d(2)
         
@@ -501,9 +501,9 @@ class UNet8x_Noise(nn.Module):
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(256 + 256, 256, dropout_prob)
         self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.decoder2 = self.conv_block(128 + 128, 128, dropout_prob)
+        self.decoder2 = self.conv_block(128 + 128, 128, dropout_prob=0)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.decoder1 = self.conv_block(64 + 64, 64, dropout_prob)
+        self.decoder1 = self.conv_block(64 + 64, 64, dropout_prob=0)
         
         # Additional upsampling layers for 8x resolution
         self.upconv_final1 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
