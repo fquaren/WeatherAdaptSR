@@ -7,6 +7,7 @@ import argparse
 import pandas as pd
 import numpy as np
 import glob
+import csv
 
 from data.dataloader import get_dataloaders
 from src.models import unet
@@ -44,20 +45,22 @@ def main():
     exp_name = config["experiment"]["name"]
     
     # Experiment id
-    if os.path.exists(os.path.join(exp_path, exp_name)):
-        # Get exp id from argparse
-        if resume_exp is None:
-            # Generate a new experiment ID
-            exp_id = generate_experiment_id()
-            print(f"Generated new experiment ID: {exp_id}")
+    # Get exp id from argparse
+    if resume_exp is None:
+        # Generate a new experiment ID
+        exp_id = generate_experiment_id()
+        print(f"Generated new experiment ID: {exp_id}")
+    else:
+        # Check if the experiment ID already exists
+        exp_id = resume_exp
+        existing_ids = [f.split("/")[-1] for f in glob.glob(os.path.join(exp_path, exp_name, "*"))]
+        # Check if the experiment ID exists
+        if exp_id in existing_ids:
+            print(f"Found experiment at {os.path.join(exp_path, exp_name, exp_id)} already exists. Resuming training.")
         else:
-            # Check if the experiment ID already exists
-            existing_ids = [f.split("/")[-1] for f in glob.glob(os.path.join(exp_path, exp_name, "*"))]
-            exp_id = resume_exp
-            print(f"Resuming experiment with ID: {exp_id}")
-            # Check if the experiment ID exists
-            if exp_id in existing_ids:
-                print(f"Found experiment at {os.path.join(exp_path, exp_name, exp_id)} already exists. Resuming training.")
+            print(f"Experiment ID {exp_id} does not exist. Retry.")
+            return
+        print(f"Resuming experiment with ID: {exp_id}")
         
     # exp_id = generate_experiment_id()
     output_dir = os.path.join(exp_path, exp_name, exp_id)
@@ -78,7 +81,8 @@ def main():
         if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
             with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
                 file.write("Time,Model,Path\n")
-        with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
+        with open(os.path.join(local_dir, "experiments.csv"), "a") as file:
+            # Append a line to the csv file
             file.write(f"{time},{model},{output_dir}\n")
 
     # Get data paths

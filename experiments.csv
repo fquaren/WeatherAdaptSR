@@ -1,1 +1,6 @@
 Time,Model,Path
+2025-03-31 21:03:20.579160,UNet8x,/scratch/fquareng/experiments/UNet_experiments/65dh
+2025-04-01 02:05:57.496326,UNet8x_DO,/scratch/fquareng/experiments/UNet_experiments/yepw
+2025-04-01 08:57:22.495359,UNet8x_BN,/scratch/fquareng/experiments/UNet_experiments/3fmn
+2025-04-01 09:14:52.976418,UNet8x_DO_BN,/scratch/fquareng/experiments/UNet_experiments/t1ui
+2025-04-01 09:18:52.321317,UNet8x_Noise,/scratch/fquareng/experiments/UNet_experiments/bzol

@@ -67,21 +67,9 @@ def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num
 
     return dataloaders
 
-# # Example Usage:
-# data_dir = "/path/to/clusters"
-# elev_dir = "/path/to/elevation"
-# variable = "temperature"
 
-# dataloaders = get_dataloaders(data_dir, elev_dir, variable, batch_size=16)
+# Old version of dataloaders -------------------------------------------------------------------------------------------------
 
-# # Example: Loop over each leave-one-cluster-out split
-# for excluded_cluster, loaders in dataloaders.items():
-#     print(f"Training excluding cluster: {excluded_cluster}")
-#     for batch in loaders["train"]:
-#         print(batch[0].shape, batch[1].shape, batch[2].shape)
-#         break
-
-####################################################################################################
 
 def split_dataset(input_files, target_files):
     """
