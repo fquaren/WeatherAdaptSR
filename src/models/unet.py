@@ -607,9 +607,9 @@ class GradientReversalLayer(torch.autograd.Function):
         return -grad_output
 
 
-class UNet8x_DA(nn.Module):
+class UNet8x_MDAN(nn.Module):
     def __init__(self, num_domains=7):  # Number of source domains
-        super(UNet8x_DA, self).__init__()
+        super(UNet8x_MDAN, self).__init__()
 
         # Elevation Downsampling Block (to match variable resolution)
         self.downsample_elevation = nn.Sequential(

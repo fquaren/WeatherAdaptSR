@@ -7,9 +7,9 @@ import argparse
 import pandas as pd
 import glob
 
-from data.dataloader import get_dataloaders
+from data.dataloader import get_dataloaders, get_source_target_dataloaders
 from src.models import unet
-from src.train import train_model
+from src.train import train_model_mdan
 
 
 # Generate random experiment ID
@@ -121,17 +121,24 @@ def main():
         num_workers=config["training"]["num_workers"]
     )
 
+    num_domains = len(dataloaders)
+    print(f"Number of domains: {num_domains}")
+
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster, loaders in dataloaders.items():
-        print(f"Training excluding cluster: {excluded_cluster}")
-        train_loaders = loaders["train"]
-        val_loaders = loaders["val"]
+        print(f"Training with {excluded_cluster} as target domain.")
+        
+        # Get train and val loaders
+        source_dataloader, target_dataloader = get_source_target_dataloaders(dataloaders, excluded_cluster)
+        print(f"Source dataloader: {source_dataloader}, batch size: {len(source_dataloader)}")
+        print(f"Target dataloader: {target_dataloader}, batch size: {len(target_dataloader)}")
     
-        _  = train_model(
+        _  = train_model_mdan(
             model=model,
             excluding_cluster=excluded_cluster,
-            train_loader=train_loaders,
-            val_loader=val_loaders,
+            source_loaders=source_dataloader,
+            target_loaders=target_dataloader,
+            num_domains=num_domains,
             config=config["training"],
             device=device,
             save_path=output_dir,

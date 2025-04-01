@@ -1,9 +1,9 @@
 experiment:
   seed: 0
-  name: "UNet_experiments" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
+  name: "test" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
-  device: "cuda"
-  model: UNet8x_DO_BN # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise
+  device: "cpu"
+  model: UNet8x_MDAN # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise
   noise_type: "gaussian" # "gaussian", "salt_pepper", "speckle", "uniform"
 
 data:
@@ -31,6 +31,11 @@ training:
     factor: 0.5
     patience: 5
     verbose: True
+  domain_adaptation: 
+    criterion: CrossEntropyLoss
+    training_mode: maxmin # maxmin, dynamic
+    mu: 1e-2
+    gamma: 10.0
 
 testing:
   criterion: MSELoss

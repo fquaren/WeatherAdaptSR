@@ -2,6 +2,7 @@ from data.dataset import SingleVariableDataset, SingleVariableDataset_v2
 from torch.utils.data import DataLoader
 import os
 import re
+from itertools import chain
 
 
 def get_file_splits(input_dir, target_dir, excluded_cluster):
@@ -68,8 +69,41 @@ def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num
     return dataloaders
 
 
-# Old version of dataloaders -------------------------------------------------------------------------------------------------
+# Domain adaptation dataloaders
+def get_source_target_dataloaders(dataloaders, excluded_cluster):
+    """
+    Extract source and target dataloaders based on the excluded cluster.
+    
+    - The source dataloader samples one data point from each remaining cluster.
+    - The target dataloader samples from the excluded cluster.
 
+    Args:
+        dataloaders (dict): Dictionary containing all dataloaders.
+        excluded_cluster (str): The cluster to be used as the target domain.
+
+    Returns:
+        source_dataloader (dict): A dictionary with 'train', 'val', and 'test' source dataloaders.
+        target_dataloader (dict): A dictionary with 'train', 'val', and 'test' target dataloaders.
+    """
+    # Separate the target dataloader
+    target_dataloader = dataloaders[excluded_cluster]
+
+    # Get all source clusters (excluding the target)
+    source_clusters = {k: v for k, v in dataloaders.items() if k != excluded_cluster}
+
+    num_samples_per_cluster = 2  # Change this to adjust the number of samples per cluster
+
+    source_dataloader = {
+        "train": list(chain(*[[source_clusters[k]["train"]] * num_samples_per_cluster for k in source_clusters])),
+        "val": list(chain(*[[source_clusters[k]["val"]] * num_samples_per_cluster for k in source_clusters])),
+        "test": list(chain(*[[source_clusters[k]["test"]] * num_samples_per_cluster for k in source_clusters])),
+    }
+
+    return source_dataloader, target_dataloader
+
+
+
+# Old version of dataloaders -------------------------------------------------------------------------------------------------
 
 def split_dataset(input_files, target_files):
     """
