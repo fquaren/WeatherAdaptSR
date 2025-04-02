@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name mdan_max_min
+#SBATCH --job-name noise
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 

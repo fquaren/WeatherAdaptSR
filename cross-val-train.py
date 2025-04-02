@@ -29,7 +29,7 @@ def main():
     resume_exp = args.resume_exp
     print("Using config: ", config)
 
-    # Load local config
+    # Load config
     config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
@@ -72,6 +72,11 @@ def main():
         # Save experiment metadata
         file.write(f"EXPERIENT_ID: {exp_id}\n")
         file.write(f"EXPERIMENT_DATE: {time}\n")
+
+    # Use saved config file for experiment
+    config_path = os.path.join(output_dir, f"config.yaml")
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
         
     # Log experiment in experiments.csv: (Time, Model, Path)
     local_dir = "../../work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
@@ -100,11 +105,6 @@ def main():
     # Load model
     model = getattr(unet, model)()
     print(f"Using model: {model}")
-    # Check if model name contains Noise, if so, set noise type TODO: improve this
-    if "Noise" in model.__class__.__name__:
-        noise_type = config["experiment"]["noise_type"]
-        model.noise_type = noise_type
-        print(f"Using noise type: {noise_type}")
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU

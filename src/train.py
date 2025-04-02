@@ -53,6 +53,7 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
     # Note: I validate only on target domain
     train_loader_source = source_loaders["train"]
     train_loader_target = target_loaders["train"]
+    val_loader_source = source_loaders["val"]
     val_loader_target = target_loaders["val"]
 
     for epoch in range(num_epochs):
@@ -70,20 +71,23 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
             
             optimizer.zero_grad()
 
-            # Forward pass for source data (regression and domain classifier)
+            # Forward pass for source data (regression and domain classifiers)
             regression_losses = []
-            domain_losses = []
+            source_domain_losses = []
+            target_domain_losses = []
             for j in range(num_domains - 1):
                 output, s_domain_pred = model(temperature, elevation, domain_idx=j)
                 regression_loss = regression_criterion(output, target)
                 s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
                 regression_losses.append(regression_loss)
-                domain_losses.append(s_domain_loss)
+                source_domain_losses.append(s_domain_loss)
 
-            # Forward pass for target data (only (random) domain classifier)
-            _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=np.random.randint(num_domains - 1))
-            t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-            domain_losses.append(t_domain_loss)
+                # Forward pass for target data (only domain classifiers)
+                _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
+                t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
+                target_domain_losses.append(t_domain_loss)
+
+                domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
 
             # Convert lists to tensors
             regression_losses = torch.stack(regression_losses)
@@ -107,10 +111,37 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for tx, telev, ty in val_loader_target:
+            for (sx, selev, sy), (tx, telev, ty) in zip(val_loader_source, val_loader_target):
+                temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
                 temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
-                output, _ = model(temperature_t, elevation_t, domain_idx=np.random.randint(num_domains - 1))
-                val_loss += regression_criterion(output, target).item()
+
+                regression_losses = []
+                domain_losses = []
+
+                for j in range(num_domains - 1):
+                    output, s_domain_pred = model(temperature, elevation, domain_idx=j)
+                    regression_loss = regression_criterion(output, target)
+                    s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
+                    regression_losses.append(regression_loss)
+                    domain_losses.append(s_domain_loss)
+                
+                # Forward pass for target data (only (random) domain classifier)
+                _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=np.random.randint(num_domains - 1))
+                t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
+                domain_losses.append(t_domain_loss)
+
+                # Convert lists to tensors
+                regression_losses = torch.stack(regression_losses)
+                domain_losses = torch.stack(domain_losses)
+
+                # Compute final loss
+                if mode == "maxmin":
+                    loss = torch.max(regression_losses) + mu * torch.min(domain_losses)
+                elif mode == "dynamic":
+                    loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
+                else:
+                    raise ValueError(f"Unsupported training mode: {mode}")
+                val_loss += loss.item
         
         val_loss /= len(val_loader_target)
         val_losses.append(val_loss)
@@ -134,7 +165,7 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
 
         # Logging
         epoch_time = time.time() - epoch_start_time
-        current_lr = optimizer.param_groups[0]['lr']
+        current_lr = optimizer.param_groups[0]['lr']  # TODO: fix get_last_lr()
         if epoch == 0:
             with open(log_file, "w") as f:
                 f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")

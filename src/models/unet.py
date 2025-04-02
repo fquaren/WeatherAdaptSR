@@ -466,11 +466,10 @@ class UNet8x_Noise(nn.Module):
     
 
 class UNet8x_Noise(nn.Module):
-    def __init__(self, dropout_prob=0.3, noise_type="gaussian", noise_level=0.1):
+    def __init__(self, dropout_prob=0.3, noise_std=0.1):
         super(UNet8x_Noise, self).__init__()
 
-        self.noise_type = noise_type  # "gaussian", "salt_pepper", "speckle", etc.
-        self.noise_level = noise_level  # Intensity of noise
+        self.noise_std = noise_std  # Non-trainable parameter
 
         # Learnable variance for Gaussian noise
         self.input_log_var = nn.Parameter(torch.zeros(1))  
@@ -523,34 +522,25 @@ class UNet8x_Noise(nn.Module):
             nn.Dropout(dropout_prob)
         )
 
-    def add_noise(self, x):
-        """Applies different types of noise to the input."""
-        if self.noise_type == "gaussian":
-            std = torch.exp(0.5 * self.input_log_var)  
-            noise = torch.randn_like(x) * std
-            return x + noise
-
-        elif self.noise_type == "salt_pepper":
-            prob = self.noise_level
-            rand_mask = torch.rand_like(x)
-            x[rand_mask < (prob / 2)] = 0  # Salt
-            x[rand_mask > 1 - (prob / 2)] = 1  # Pepper
-            return x
-
-        elif self.noise_type == "speckle":
-            noise = torch.randn_like(x) * self.noise_level
-            return x + x * noise  # Multiplicative noise
-
-        elif self.noise_type == "uniform":
-            noise = (torch.rand_like(x) - 0.5) * self.noise_level
-            return x + noise
-
+    def add_gaussian_multiplicative_noise(self, x):
+        """
+        Apply Gaussian multiplicative noise to input tensor.
+        
+        Parameters:
+        - x: torch.Tensor, input data
+        
+        Returns:
+        - torch.Tensor, noised data
+        """
+        if self.training:  # Apply noise only during training
+            noise = torch.randn_like(x) * self.noise_std + 1  # Multiplicative noise: N(1, noise_std)
+            return x * noise
         else:
-            return x  # No noise if type is not recognized
-
+            return x  # No noise during evaluation
+    
     def forward(self, variable, elevation):  
         if self.training:
-            variable_noisy = self.add_noise(variable)
+            variable_noisy = self.add_gaussian_multiplicative_noise(variable)
         else:
             variable_noisy = variable
         
