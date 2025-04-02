@@ -100,11 +100,6 @@ def main():
     # Load model
     model = getattr(unet, model)()
     print(f"Using model: {model}")
-    # Check if model name contains Noise, if so, set noise type TODO: improve this
-    if "Noise" in model.__class__.__name__:
-        noise_type = config["experiment"]["noise_type"]
-        model.noise_type = noise_type
-        print(f"Using noise type: {noise_type}")
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
