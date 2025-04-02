@@ -77,7 +77,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         # Save only the latest best model snapshot
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            snapshot_path = os.path.join(save_path, f"best_snapshot.pth")
+            snapshot_path = os.path.join(save_path, cluster_dir, f"best_snapshot.pth")
             torch.save({
                 "epoch": epoch + 1,
                 "model_state_dict": model.state_dict(),
