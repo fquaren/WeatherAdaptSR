@@ -107,7 +107,7 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
         train_loss /= len(train_loader_source)
         train_losses.append(train_loss)
         
-        # Validation step only on target domain and regression task
+        # Validation step
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -116,19 +116,22 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
                 temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
 
                 regression_losses = []
-                domain_losses = []
+                source_domain_losses = []
+                target_domain_losses = []
 
                 for j in range(num_domains - 1):
                     output, s_domain_pred = model(temperature, elevation, domain_idx=j)
                     regression_loss = regression_criterion(output, target)
                     s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
                     regression_losses.append(regression_loss)
-                    domain_losses.append(s_domain_loss)
+                    source_domain_losses.append(s_domain_loss)
                 
-                # Forward pass for target data (only (random) domain classifier)
-                _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=np.random.randint(num_domains - 1))
-                t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-                domain_losses.append(t_domain_loss)
+                    # Forward pass for target data (only (random) domain classifier)
+                    _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
+                    t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
+                    target_domain_losses.append(t_domain_loss)
+                    
+                    domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
 
                 # Convert lists to tensors
                 regression_losses = torch.stack(regression_losses)
