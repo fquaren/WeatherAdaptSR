@@ -30,13 +30,13 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
             target_file_path = os.path.join(target_path, target_file)
 
             if cluster == excluded_cluster:
-                if year == 2019 and month % 2 == 1:
+                if year == 2017 and month in [3, 6, 9, 12]:
                     val_inputs.append(input_file_path)
                     val_targets.append(target_file_path)
-            elif year == 2015:
+            elif year == 2019 and month % 2 == 1:
                 train_inputs.append(input_file_path)
                 train_targets.append(target_file_path)
-            elif year == 2017:
+            elif year == 2015:
                 test_inputs.append(input_file_path)
                 test_targets.append(target_file_path)
 
@@ -45,6 +45,48 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
         "val": (val_inputs, val_targets),
         "test": (test_inputs, test_targets),
     }
+
+
+# def get_file_splits(input_dir, target_dir, excluded_cluster):
+#     train_inputs, val_inputs, test_inputs = [], [], []
+#     train_targets, val_targets, test_targets = [], [], []
+
+#     for cluster in sorted(os.listdir(input_dir)):
+#         input_path = os.path.join(input_dir, cluster)
+#         target_path = os.path.join(target_dir, cluster)
+#         if not os.path.isdir(input_path) or not os.path.isdir(target_path):
+#             continue
+
+#         all_input_files = sorted([f for f in os.listdir(input_path) if f.endswith(".nz")])
+#         all_target_files = sorted([f for f in os.listdir(target_path) if f.endswith(".nz")])
+#         pattern = re.compile(r"(\d{1,2})_(\d{1,2})_lffd(\d{4})(\d{2})(\d{2})\d{6}")
+        
+#         for input_file, target_file in zip(all_input_files, all_target_files):
+#             assert pattern.search(input_file).group(3,4,5) == pattern.search(target_file).group(3,4,5), "Input and target files must match."
+#             try:
+#                 _, _, year, month = SingleVariableDataset_v2._extract_numbers(None, input_file)
+#             except ValueError:
+#                 continue
+
+#             input_file_path = os.path.join(input_path, input_file)
+#             target_file_path = os.path.join(target_path, target_file)
+
+#             if cluster == excluded_cluster:
+#                 if year == 2019 and month % 2 == 1:
+#                     val_inputs.append(input_file_path)
+#                     val_targets.append(target_file_path)
+#             elif year == 2015:
+#                 train_inputs.append(input_file_path)
+#                 train_targets.append(target_file_path)
+#             elif year == 2017:
+#                 test_inputs.append(input_file_path)
+#                 test_targets.append(target_file_path)
+
+#     return {
+#         "train": (train_inputs, train_targets),
+#         "val": (val_inputs, val_targets),
+#         "test": (test_inputs, test_targets),
+#     }
 
 
 # def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num_workers=1):

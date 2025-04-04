@@ -2,7 +2,6 @@ import torch
 import os
 import numpy as np
 import time
-from torch.utils.tensorboard import SummaryWriter
 
 
 # Train loop
@@ -45,7 +44,6 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
     tensorboard_path = os.path.join(cluster_dir, "tensorboard_logs")
-    writer = SummaryWriter(tensorboard_path)
     
     model.to(device)
 
@@ -175,19 +173,12 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
         with open(log_file, "a") as f:
             f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
-        writer.add_scalar("Epoch Time", epoch_time, epoch + 1)
-        writer.add_scalar("Loss/Train", train_loss, epoch + 1)
-        writer.add_scalar("Loss/Validation", val_loss, epoch + 1)
-        writer.add_scalar("Learning Rate", current_lr, epoch + 1)
-        writer.add_scalar("Best Validation Loss", best_val_loss, epoch + 1)
-
         # Early Stopping
         if config["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
 
     print("Training complete! Best model saved as:", snapshot_path)
-    writer.close()
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
@@ -231,7 +222,6 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
     tensorboard_path = os.path.join(cluster_dir, "tensorboard_logs")
-    writer = SummaryWriter(tensorboard_path)
     
     model.to(device)
     
@@ -290,19 +280,12 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         with open(log_file, "a") as f:
             f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
-        writer.add_scalar("Epoch Time", epoch_time, epoch + 1)
-        writer.add_scalar("Loss/Train", train_loss, epoch + 1)
-        writer.add_scalar("Loss/Validation", val_loss, epoch + 1)
-        writer.add_scalar("Learning Rate", current_lr, epoch + 1)
-        writer.add_scalar("Best Validation Loss", best_val_loss, epoch + 1)
-
         # Early Stopping
         if config["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
 
     print("Training complete! Best model saved as:", snapshot_path)
-    writer.close()
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))

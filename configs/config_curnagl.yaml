@@ -7,8 +7,8 @@ experiment:
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
-  input_path: "DA/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
-  target_path: "DA/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
+  input_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
+  target_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
   dem_path: "dem_squares"
   variable: "T_2M"
 
