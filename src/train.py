@@ -38,7 +38,6 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
 
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
-    tensorboard_path = os.path.join(cluster_dir, "tensorboard_logs")
     
     model.to(device)
     
