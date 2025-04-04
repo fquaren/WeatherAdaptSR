@@ -24,6 +24,4 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
-source /dcsrsoft/spack/external/ckptslurmjob/scripts/ckpt_methods.sh
-
-launch_app python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
+micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py

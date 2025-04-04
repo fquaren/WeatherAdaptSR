@@ -110,7 +110,6 @@ def main():
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     model.to(device)
 
-    
     # Load data 
     dataloaders = get_dataloaders(
         input_dir=input_dir,
