@@ -43,7 +43,6 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
 
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
-    tensorboard_path = os.path.join(cluster_dir, "tensorboard_logs")
     
     model.to(device)
 
@@ -142,7 +141,7 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
                     loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
                 else:
                     raise ValueError(f"Unsupported training mode: {mode}")
-                val_loss += loss.item
+                val_loss += loss.item()
         
         val_loss /= len(val_loader_target)
         val_losses.append(val_loss)

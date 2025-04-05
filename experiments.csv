@@ -9,3 +9,5 @@ Time,Model,Path
 2025-04-01 10:55:15.644077,UNet8x_BN,/scratch/fquareng/experiments/UNet_experiments/q5f6
 2025-04-02 14:51:33.028478,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/bcm5
 2025-04-03 10:17:30.100670,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/r7nx
+2025-04-05 00:06:39.705882,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/msd7
+2025-04-05 10:06:05.579127,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/itlu
