@@ -5,14 +5,13 @@ import time
 
 
 # Train loop
-def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, num_domains, config, device, save_path):
+def train_model_mdan(model, dataloaders, config, device, save_path):
     
     optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
     scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
     
     regression_criterion = getattr(torch.nn, config["criterion"])()
     domain_criterion = getattr(torch.nn, config["domain_adaptation"]["criterion"])()
-    mode = config["domain_adaptation"]["training_mode"]
     mu = config["domain_adaptation"]["mu"]
     gamma = config["domain_adaptation"]["gamma"]
 
@@ -23,167 +22,158 @@ def train_model_mdan(model, excluding_cluster, source_loaders, target_loaders, n
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
-    cluster_dir = os.path.join(save_path, excluding_cluster)
-    if os.path.exists(os.path.join(cluster_dir, "best_snapshot.pth")):
-        print(f"Loading model checkpoint from {cluster_dir} ...")
-        checkpoint = torch.load(os.path.join(cluster_dir, "best_snapshot.pth"), map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        start_epoch = checkpoint["epoch"]
-        train_losses = list(np.load(os.path.join(cluster_dir, "train_losses.npy")))
-        val_losses = list(np.load(os.path.join(cluster_dir, "val_losses.npy")))
-        best_val_loss = checkpoint["val_loss"]
-        print(f"Resuming training from epoch {start_epoch+1}")
-    else:
-        print("No checkpoint found, starting fresh training.")
-        os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
-        start_epoch = 0
-        best_val_loss = float("inf")
-
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
     
     model.to(device)
 
-    # Extract training and validation loaders for source and target domains
-    # Note: I validate only on target domain
-    train_loader_source = source_loaders["train"]
-    train_loader_target = target_loaders["train"]
-    val_loader_source = source_loaders["val"]
-    val_loader_target = target_loaders["val"]
-
-    for epoch in range(num_epochs):
-        epoch_start_time = time.time()
-        model.train()
-        train_loss = 0.0
+    for cluster_name, _ in dataloaders.items():
+        target_cluster = cluster_name
+        cluster_dir = os.path.join(save_path, target_cluster)
+        os.makedirs(cluster_dir, exist_ok=True)
         
-        # Training Step
-        for (sx, selev, sy), (tx, telev, ty) in zip(train_loader_source, train_loader_target):
-            temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
-            temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
-            # Set requires_grad=False for target data
-            temperature_t.requires_grad = False
-            elevation_t.requires_grad = False
-            
-            optimizer.zero_grad()
+        # Separate source and target loaders
+        train_source_loaders = []
+        val_source_loaders = []
+        for cluster_name, loaders in dataloaders.items():
+            if cluster_name == target_cluster:
+                train_target_loader = loaders["train"]
+                val_target_loader = loaders["val"]
+            else:
+                train_source_loaders.append(loaders["train"])
+                val_source_loaders.append(loaders["val"])
 
-            # Forward pass for source data (regression and domain classifiers)
+        print(f"Training with {target_cluster} as target domain...")
+        for epoch in range(num_epochs):
+            epoch_start_time = time.time()
+            model.train()
+            train_loss = 0.0
+            
+            # Training Step
             regression_losses = []
             source_domain_losses = []
             target_domain_losses = []
-            for j in range(num_domains - 1):
-                output, s_domain_pred = model(temperature, elevation, domain_idx=j)
-                regression_loss = regression_criterion(output, target)
-                s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
-                regression_losses.append(regression_loss)
-                source_domain_losses.append(s_domain_loss)
+            for j, train_target_loader in enumerate(train_source_loaders):
+                train_source_loader = train_source_loaders[j]
 
-                # Forward pass for target data (only domain classifiers)
-                _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
-                t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-                target_domain_losses.append(t_domain_loss)
+                for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
+                    temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
+                    temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
 
-                domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
+                    optimizer.zero_grad()
+
+                    # Forward pass for source data
+                    output, s_domain_pred = model(temperature, elevation, domain_idx=j)
+                    regression_loss = regression_criterion(output, target)
+                    s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
+                    regression_losses.append(regression_loss)
+                    source_domain_losses.append(s_domain_loss)
+
+                    # Forward pass for target data (only domain classifiers)
+                    _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
+                    t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
+                    target_domain_losses.append(t_domain_loss)
+
+            # Note: each domain is weighted equally
+            domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
 
             # Convert lists to tensors
             regression_losses = torch.stack(regression_losses)
             domain_losses = torch.stack(domain_losses)
 
             # Compute final loss
-            if mode == "maxmin":
-                loss = torch.max(regression_losses) + mu * torch.min(domain_losses)
-            elif mode == "dynamic":
-                loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
-            else:
-                raise ValueError(f"Unsupported training mode: {mode}")
+            loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
+            
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+    
+            train_loss /= len(train_source_loader)
+            train_losses.append(train_loss)
         
-        train_loss /= len(train_loader_source)
-        train_losses.append(train_loss)
-        
-        # Validation step
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for (sx, selev, sy), (tx, telev, ty) in zip(val_loader_source, val_loader_target):
-                temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
-                temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
-
+            # Validation step
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
                 regression_losses = []
                 source_domain_losses = []
                 target_domain_losses = []
+                for j, val_target_loader in enumerate(val_source_loaders):
+                    val_source_loader = val_source_loaders[j]
+                    for (sx, selev, sy), (tx, telev, ty) in zip(val_source_loader, val_target_loader):
+                        temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
+                        temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
+                        
+                        # Set requires_grad to False for less memory usage
+                        temperature.requires_grad = False
+                        elevation.requires_grad = False
+                        target.requires_grad = False
+                        temperature_t.requires_grad = False
+                        elevation_t.requires_grad = False
 
-                for j in range(num_domains - 1):
-                    output, s_domain_pred = model(temperature, elevation, domain_idx=j)
-                    regression_loss = regression_criterion(output, target)
-                    s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
-                    regression_losses.append(regression_loss)
-                    source_domain_losses.append(s_domain_loss)
-                
-                    # Forward pass for target data (only (random) domain classifier)
-                    _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
-                    t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-                    target_domain_losses.append(t_domain_loss)
+                        # Forward pass for source data
+                        output, s_domain_pred = model(temperature, elevation, domain_idx=j)
+                        regression_loss = regression_criterion(output, target)
+                        s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
+                        regression_losses.append(regression_loss)
+                        source_domain_losses.append(s_domain_loss)
                     
-                    domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
+                        # Forward pass for target data (only domain classifier)
+                        _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
+                        t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
+                        target_domain_losses.append(t_domain_loss)
+                            
+                domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
 
                 # Convert lists to tensors
                 regression_losses = torch.stack(regression_losses)
                 domain_losses = torch.stack(domain_losses)
 
                 # Compute final loss
-                if mode == "maxmin":
-                    loss = torch.max(regression_losses) + mu * torch.min(domain_losses)
-                elif mode == "dynamic":
-                    loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
-                else:
-                    raise ValueError(f"Unsupported training mode: {mode}")
+                loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
                 val_loss += loss.item()
         
-        val_loss /= len(val_loader_target)
-        val_losses.append(val_loss)
-        scheduler.step(val_loss)
+                val_loss /= len(val_source_loader)
+                val_losses.append(val_loss)
+                scheduler.step(val_loss)
 
-        # Save only the latest best model snapshot
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
-            torch.save({
-                "epoch": epoch + 1,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-                "train_loss": train_loss,
-                "val_loss": val_loss
-            }, snapshot_path)
-            early_stop_counter = 0
-        else:
-            early_stop_counter += 1
+            # Save only the latest best model snapshot
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
+                torch.save({
+                    "epoch": epoch + 1,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "train_loss": train_loss,
+                    "val_loss": val_loss
+                }, snapshot_path)
+                early_stop_counter = 0
+            else:
+                early_stop_counter += 1
 
-        # Logging
-        epoch_time = time.time() - epoch_start_time
-        current_lr = optimizer.param_groups[0]['lr']  # TODO: fix get_last_lr()
-        if epoch == 0:
-            with open(log_file, "w") as f:
-                f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
-        with open(log_file, "a") as f:
-            f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
+            # Logging
+            epoch_time = time.time() - epoch_start_time
+            current_lr = optimizer.param_groups[0]['lr']  # TODO: fix get_last_lr()
+            if epoch == 0:
+                with open(log_file, "w") as f:
+                    f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
+            with open(log_file, "a") as f:
+                f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
-        # Early Stopping
-        if config["early_stopping"] and early_stop_counter >= patience:
-            print("Early stopping triggered.")
-            break
+            # Early Stopping
+            if config["early_stopping"] and early_stop_counter >= patience:
+                print("Early stopping triggered.")
+                break
+        
+        print(f"Training with {target_cluster} as target domain complete, best model saved as:", snapshot_path)
 
-    print("Training complete! Best model saved as:", snapshot_path)
+        # Save losses data
+        np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
+        np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
 
-    # Save losses data
-    np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
-    np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
-
-    return snapshot_path
+    return
 
 
 # Train loop

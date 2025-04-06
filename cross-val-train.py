@@ -120,23 +120,16 @@ def main():
         num_workers=config["training"]["num_workers"]
     )
 
-    num_domains = len(dataloaders)
-    print(f"Number of domains: {num_domains}")
+    print(f"Number of domains: {len(dataloaders)}")
 
     # Train in a leave-one-cluster-out cross-validation fashion
-    for excluded_cluster, (source_dataloader, target_dataloader) in dataloaders.items():
-        print(f"Training with {excluded_cluster} as target domain.")
-
-        _  = train_model_mdan(
-            model=model,
-            excluding_cluster=excluded_cluster,
-            source_loaders=source_dataloader,
-            target_loaders=target_dataloader,
-            num_domains=num_domains,
-            config=config["training"],
-            device=device,
-            save_path=output_dir,
-        )
+    train_model_mdan(
+        model=model,
+        dataloaders=dataloaders,
+        config=config["training"],
+        device=device,
+        save_path=output_dir,
+    )        
     
     return
 

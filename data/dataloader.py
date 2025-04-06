@@ -89,72 +89,72 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
 #     }
 
 
-# def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num_workers=1):
-#     cluster_names = sorted([c for c in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, c))])
-#     dataloaders = {}
-
-#     for excluded_cluster in cluster_names:
-#         print(f"Excluding cluster: {excluded_cluster}")
-
-#         file_splits = get_file_splits(input_dir, target_dir, excluded_cluster)
-
-#         train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir)
-#         val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir)
-#         test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
-
-#         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-#         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-#         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-
-#         dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader, "test": test_loader}
-
-#     return dataloaders
-
-
-# Domain adaptation dataloaders
-def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=16, num_workers=1, N=8):
+def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num_workers=1):
     cluster_names = sorted([c for c in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, c))])
-
     dataloaders = {}
 
     for excluded_cluster in cluster_names:
-        print(f"Fixing {excluded_cluster} as target domain.")
+        print(f"Excluding cluster: {excluded_cluster}")
 
         file_splits = get_file_splits(input_dir, target_dir, excluded_cluster)
 
-        # Target Dataset (Excluded Cluster)
-        target_dataloader = {
-            "train": DataLoader(SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir), batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True),
-            "val": DataLoader(SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
-            "test": DataLoader(SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
-        }
+        train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir)
+        val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir)
+        test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
 
-        # Source Datasets (All Clusters Except Excluded One)
-        source_train, source_val, source_test = [], [], []
-        for cluster in cluster_names:
-            if cluster == excluded_cluster:
-                continue  # Skip the excluded cluster
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
-            file_splits = get_file_splits(input_dir, target_dir, cluster)
-
-            train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir)
-            val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir)
-            test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
-
-            source_train.append(train_dataset)
-            source_val.append(val_dataset)
-            source_test.append(test_dataset)
-
-        # Merge source datasets from all clusters except target
-        source_dataloader = {
-            "train": DataLoader(ConcatDataset(source_train), batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True),
-            "val": DataLoader(ConcatDataset(source_val), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
-            "test": DataLoader(ConcatDataset(source_test), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
-        }
-
-        dataloaders[excluded_cluster] = (source_dataloader, target_dataloader)
+        dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader, "test": test_loader}
 
     return dataloaders
+
+
+# # Domain adaptation dataloaders
+# def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=16, num_workers=1, N=8):
+#     cluster_names = sorted([c for c in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, c))])
+
+#     dataloaders = {}
+
+#     for excluded_cluster in cluster_names:
+#         print(f"Fixing {excluded_cluster} as target domain.")
+
+#         file_splits = get_file_splits(input_dir, target_dir, excluded_cluster)
+
+#         # Target Dataset (Excluded Cluster)
+#         target_dataloader = {
+#             "train": DataLoader(SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir), batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True),
+#             "val": DataLoader(SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
+#             "test": DataLoader(SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
+#         }
+
+#         # Source Datasets (All Clusters Except Excluded One)
+#         source_train, source_val, source_test = [], [], []
+#         for cluster in cluster_names:
+#             if cluster == excluded_cluster:
+#                 continue  # Skip the excluded cluster
+
+#             file_splits = get_file_splits(input_dir, target_dir, cluster)
+
+#             train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir)
+#             val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir)
+#             test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
+
+#             source_train.append(train_dataset)
+#             source_val.append(val_dataset)
+#             source_test.append(test_dataset)
+
+#         # Merge source datasets from all clusters except target
+#         source_dataloader = {
+#             "train": DataLoader(ConcatDataset(source_train), batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True),
+#             "val": DataLoader(ConcatDataset(source_val), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
+#             "test": DataLoader(ConcatDataset(source_test), batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True),
+#         }
+
+#         dataloaders[excluded_cluster] = (source_dataloader, target_dataloader)
+
+#     return dataloaders
 
 
 

@@ -2,7 +2,7 @@ experiment:
   seed: 0
   name: "UNet_mdan" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
-  device: "cpu"
+  device: "gpu"
   model: UNet8x_MDAN # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise, UNet8x_MDAN
 
 data:
@@ -32,7 +32,6 @@ training:
     verbose: True
   domain_adaptation: 
     criterion: CrossEntropyLoss
-    training_mode: dynamic # maxmin, dynamic
     mu: 0.01
     gamma: 10.0
 
