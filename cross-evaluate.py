@@ -12,7 +12,7 @@ from src.models import unet
 from src.train import train_model
 
 
-def evaluate_model(model, criterion, test_loader, save_path, device="cuda", save=True):
+def evaluate_model(model, criterion, test_loader, device="cuda"):
     """
     Evaluates the model on the test datasets from multiple clusters, computes test loss, and plots results.
     
@@ -252,9 +252,7 @@ def main():
                 model,
                 criterion,
                 test_loader,
-                evaluation_path,
                 device=device,
-                save=True
             )
 
             # Save evaluation results
