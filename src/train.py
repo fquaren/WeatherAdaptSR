@@ -2,6 +2,7 @@ import torch
 import os
 import numpy as np
 import time
+import gc
 
 
 # Train loop
@@ -22,15 +23,12 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
-    # Logging
-    log_file = os.path.join(cluster_dir, "training_log.csv")
-    
-    model.to(device)
-
     for cluster_name, _ in dataloaders.items():
         target_cluster = cluster_name
         cluster_dir = os.path.join(save_path, target_cluster)
         os.makedirs(cluster_dir, exist_ok=True)
+        # Logging
+        log_file = os.path.join(cluster_dir, "training_log.csv")
         
         # Separate source and target loaders
         train_source_loaders = []
@@ -48,18 +46,17 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
             epoch_start_time = time.time()
             model.train()
             train_loss = 0.0
+            total_domains = 0
             
             # Training Step
             regression_losses = []
             source_domain_losses = []
             target_domain_losses = []
-            for j, train_target_loader in enumerate(train_source_loaders):
-                train_source_loader = train_source_loaders[j]
-
+            for j, train_source_loader in enumerate(train_source_loaders):
                 for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
-                    temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
-
+                    temperature_t, elevation_t = tx.to(device), telev.to(device) 
+                    
                     optimizer.zero_grad()
 
                     # Forward pass for source data
@@ -71,58 +68,17 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
 
                     # Forward pass for target data (only domain classifiers)
                     _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
+                    print(f"t_domain_pred: {t_domain_pred.shape}")
                     t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
                     target_domain_losses.append(t_domain_loss)
 
-            # Note: each domain is weighted equally
-            domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
-
-            # Convert lists to tensors
-            regression_losses = torch.stack(regression_losses)
-            domain_losses = torch.stack(domain_losses)
-
-            # Compute final loss
-            loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
-            
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-    
-            train_loss /= len(train_source_loader)
-            train_losses.append(train_loss)
-        
-            # Validation step
-            model.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                regression_losses = []
-                source_domain_losses = []
-                target_domain_losses = []
-                for j, val_target_loader in enumerate(val_source_loaders):
-                    val_source_loader = val_source_loaders[j]
-                    for (sx, selev, sy), (tx, telev, ty) in zip(val_source_loader, val_target_loader):
-                        temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
-                        temperature_t, elevation_t, _ = tx.to(device), telev.to(device), ty.to(device)
-                        
-                        # Set requires_grad to False for less memory usage
-                        temperature.requires_grad = False
-                        elevation.requires_grad = False
-                        target.requires_grad = False
-                        temperature_t.requires_grad = False
-                        elevation_t.requires_grad = False
-
-                        # Forward pass for source data
-                        output, s_domain_pred = model(temperature, elevation, domain_idx=j)
-                        regression_loss = regression_criterion(output, target)
-                        s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
-                        regression_losses.append(regression_loss)
-                        source_domain_losses.append(s_domain_loss)
+                    # Clear memory after each batch
+                    # del sx, selev, sy, tx, telev, temperature, elevation, target, temperature_t, elevation_t
+                    # del output, s_domain_pred, t_domain_pred
+                    # torch.cuda.empty_cache()
+                    # gc.collect()
                     
-                        # Forward pass for target data (only domain classifier)
-                        _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
-                        t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-                        target_domain_losses.append(t_domain_loss)
-                            
+                # Note: each domain is weighted equally
                 domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
 
                 # Convert lists to tensors
@@ -131,11 +87,35 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
 
                 # Compute final loss
                 loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
-                val_loss += loss.item()
+                
+                loss.backward()
+                optimizer.step()
+
+                # Accumulate the training loss
+                train_loss += loss.item()
+                total_domains += 1
+            
+            # Average the training loss after the epoch loop
+            train_loss /= total_domains
+            train_losses.append(train_loss)
         
-                val_loss /= len(val_source_loader)
-                val_losses.append(val_loss)
+            # Validation step on target domain
+            model.eval()
+            val_loss = 0.0
+            total_domains = 0
+
+            with torch.no_grad():
+                regression_losses = []
+                for tx, telev, ty in val_target_loader:
+                    temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
+
+                    # Forward pass for target data
+                    output, _ = model(temperature, elevation, domain_idx=j)
+                    val_loss += regression_criterion(output, target).item()
+                
+                val_loss /= len(val_target_loader)
                 scheduler.step(val_loss)
+                val_losses.append(val_loss)
 
             # Save only the latest best model snapshot
             if val_loss < best_val_loss:

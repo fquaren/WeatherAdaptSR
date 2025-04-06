@@ -585,12 +585,9 @@ class UNet8x_Noise(nn.Module):
 
 # Multi source domain adaptation UNet
 class GradientReversalLayer(torch.autograd.Function):
-    """Implements the Gradient Reversal Layer (GRL) for domain adaptation."""
-    
     @staticmethod
     def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return input
+        return input.view_as(input)
 
     @staticmethod
     def backward(ctx, grad_output):
