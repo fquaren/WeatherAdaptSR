@@ -32,8 +32,7 @@ training:
     verbose: True
   domain_adaptation: 
     criterion: CrossEntropyLoss
-    mu: 0.01
-    gamma: 10.0
+    lambda_max: 1
 
 testing:
   criterion: MSELoss

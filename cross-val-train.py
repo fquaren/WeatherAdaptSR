@@ -9,7 +9,9 @@ import glob
 
 from data.dataloader import get_dataloaders
 from src.models import unet
-from src.train import train_model_mdan
+from src.train_mdan import train_model_mdan
+from src.train_mmd import train_model_mmd
+
 
 
 # Generate random experiment ID
