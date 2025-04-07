@@ -126,7 +126,7 @@ def main():
         train_loaders = loaders["train"]
         val_loaders = loaders["val"]
     
-        _  = train_model(
+        train_model(
             model=model,
             excluding_cluster=excluded_cluster,
             train_loader=train_loaders,
