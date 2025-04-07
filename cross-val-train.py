@@ -123,13 +123,20 @@ def main():
     )
 
     # Train in a leave-one-cluster-out cross-validation fashion
-    train_model_mdan(
+    # train_model_mdan(
+    #     model=model,
+    #     dataloaders=dataloaders,
+    #     config=config["training"],
+    #     device=device,
+    #     save_path=output_dir,
+    # )
+    train_model_mmd(
         model=model,
         dataloaders=dataloaders,
         config=config["training"],
         device=device,
         save_path=output_dir,
-    )        
+    )       
     
     return
 

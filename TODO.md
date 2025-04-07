@@ -5,6 +5,6 @@
 - [x] Logging
 - [x] Implement evaluation setup
 - [ ] Implement AdaBN
-- [ ] Implement MDD
+- [x] Implement MDD
 - [ ] Implement Domain Pairing Strategies
 - [ ] Implmement Domain Domain Weighting Strategies

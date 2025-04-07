@@ -45,7 +45,8 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
             model.train()
 
             # Gradually increase lambda_mmd(t) during training  with Annealing
-            lambda_mmd = lambda_max * (epoch / num_epochs) ** 2
+            lambda_mmd = 0.001 + lambda_max * (epoch / num_epochs) ** 2
+            print(lambda_mmd)
             
             # Training Step
             train_losses = []

@@ -4,8 +4,6 @@ from torch.autograd import Function
 import torch.nn.functional as F
 import numpy as np
 
-from loss import compute_mmd
-
 
 class UNet8x(nn.Module):
     def __init__(self):
@@ -697,6 +695,56 @@ class UNet8x_MDAN(nn.Module):
 
         return self.output(d_final3), domain_preds
 
+
+import torch
+
+def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
+    """
+    Computes the Maximum Mean Discrepancy (MMD) between source and target features.
+    
+    Args:
+        source_features: Tensor of shape (N, D) from the source domain.
+        target_features: Tensor of shape (M, D) from the target domain.
+        kernel: Kernel type ('rbf' or 'linear').
+        sigma: Bandwidth for the RBF kernel (if None, it is estimated using median heuristic).
+        
+    Returns:
+        MMD loss (scalar)
+    """
+    def rbf_kernel(X, Y, sigma):
+        """
+        Computes the Gaussian RBF kernel between X and Y.
+        """
+        XX = torch.sum(X**2, dim=1, keepdim=True)  # (N, 1)
+        YY = torch.sum(Y**2, dim=1, keepdim=True)  # (M, 1)
+        XY = torch.matmul(X, Y.t())  # (N, M)
+
+        dists = torch.clamp(XX - 2 * XY + YY.t(), min=0.0)  # Squared L2 distance
+        K = torch.exp(-dists / (2 * sigma ** 2))  # Apply RBF kernel
+        return K
+
+    # Compute adaptive sigma if not provided
+    if sigma is None:
+        pairwise_dists = torch.cdist(source_features, target_features, p=2)
+        sigma = torch.median(pairwise_dists).item()
+
+    # Compute kernel matrices
+    if kernel == 'rbf':
+        K_ss = rbf_kernel(source_features, source_features, sigma)
+        K_tt = rbf_kernel(target_features, target_features, sigma)
+        K_st = rbf_kernel(source_features, target_features, sigma)
+    elif kernel == 'linear':
+        K_ss = torch.matmul(source_features, source_features.t())
+        K_tt = torch.matmul(target_features, target_features.t())
+        K_st = torch.matmul(source_features, target_features.t())
+    else:
+        raise ValueError("Invalid kernel type. Choose 'rbf' or 'linear'.")
+
+    # Normalize and compute MMD
+    N, M = source_features.shape[0], target_features.shape[0]
+    mmd_loss = K_ss.sum() / (N * N) + K_tt.sum() / (M * M) - 2 * K_st.sum() / (N * M)
+
+    return mmd_loss
 
 class UNet8x_MMD(nn.Module):
     def __init__(self):

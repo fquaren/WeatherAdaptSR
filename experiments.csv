@@ -30,3 +30,11 @@ Time,Model,Path
 2025-04-06 21:35:40.436045,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/q69w
 2025-04-07 21:33:48.569737,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_mdan/lj7n
 2025-04-07 21:34:27.494221,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_MDAN/2o5s
+2025-04-07 22:11:02.797257,UNet8x_MDAN,/scratch/fquareng/experiments/UNet_MMD/rpl0
+2025-04-07 22:11:55.723014,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/3rla
+2025-04-07 22:13:14.793192,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/de0y
+2025-04-07 22:14:07.812866,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/9i8x
+2025-04-07 22:15:51.240743,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/6g7q
+2025-04-07 22:18:37.077328,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/5bx7
+2025-04-07 22:20:06.718219,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/ce0x
+2025-04-07 22:23:16.705921,UNet8x_MMD,/scratch/fquareng/experiments/UNet_MMD/9z8s
