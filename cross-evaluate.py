@@ -254,9 +254,9 @@ def main():
                 device=device,
             )
 
-            # Save evaluation results
-            np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
-            print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
+            # # Save evaluation results
+            # np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
+            # print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
 
             # Plot results
             plot_results(
@@ -269,11 +269,11 @@ def main():
             # Compute mean test loss
             mean_test_loss_matrix[i, j] = np.mean(evaluation_results["test_losses"])
     # Save mean test loss matrix
-    np.savez(os.path.join(evaluation_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
+    np.savez(os.path.join(exp_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
     print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
     
     # Plot mean test loss matrix
-    plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, evaluation_path)
+    plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, exp_path)
     print("Mean test loss matrix plotted and saved.")
 
 if __name__ == "__main__":

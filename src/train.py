@@ -3,6 +3,7 @@ import os
 import numpy as np
 import time
 import gc
+from tqdm import tqdm
 
 
 # Train loop
@@ -42,7 +43,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
                 val_source_loaders.append(loaders["val"])
 
         print(f"Training with {target_cluster} as target domain...")
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs)):
             epoch_start_time = time.time()
             model.train()
             train_loss = 0.0
@@ -53,10 +54,10 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
             source_domain_losses = []
             target_domain_losses = []
             for j, train_source_loader in enumerate(train_source_loaders):
-                for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
+                print("Forward source")
+                for sx, selev, sy in tqdm(train_source_loader):
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
-                    temperature_t, elevation_t = tx.to(device), telev.to(device) 
-                    
+
                     optimizer.zero_grad()
 
                     # Forward pass for source data
@@ -66,17 +67,16 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
                     regression_losses.append(regression_loss)
                     source_domain_losses.append(s_domain_loss)
 
+                print("Forward target")
+                for tx, telev, ty in tqdm(train_target_loader):
+                    temperature_t, elevation_t = tx.to(device), telev.to(device) 
+                    
+                    optimizer.zero_grad()
+
                     # Forward pass for target data (only domain classifiers)
                     _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
-                    print(f"t_domain_pred: {t_domain_pred.shape}")
                     t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
                     target_domain_losses.append(t_domain_loss)
-
-                    # Clear memory after each batch
-                    # del sx, selev, sy, tx, telev, temperature, elevation, target, temperature_t, elevation_t
-                    # del output, s_domain_pred, t_domain_pred
-                    # torch.cuda.empty_cache()
-                    # gc.collect()
                     
                 # Note: each domain is weighted equally
                 domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
@@ -98,6 +98,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
             # Average the training loss after the epoch loop
             train_loss /= total_domains
             train_losses.append(train_loss)
+            print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}")
         
             # Validation step on target domain
             model.eval()

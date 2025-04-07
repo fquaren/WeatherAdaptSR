@@ -36,14 +36,14 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
             elif year == 2019 and month % 2 == 1:
                 train_inputs.append(input_file_path)
                 train_targets.append(target_file_path)
-            # elif year == 2015:
-            #     test_inputs.append(input_file_path)
-            #     test_targets.append(target_file_path)
+            elif year == 2015:
+                test_inputs.append(input_file_path)
+                test_targets.append(target_file_path)
 
     return {
         "train": (train_inputs, train_targets),
         "val": (val_inputs, val_targets),
-        # "test": (test_inputs, test_targets),
+        "test": (test_inputs, test_targets),
     }
 
 
@@ -100,11 +100,11 @@ def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num
 
         train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir)
         val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir)
-        #test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
+        test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir)
 
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-        #test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
         dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader}#, "test": test_loader}
 
