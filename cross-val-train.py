@@ -109,7 +109,7 @@ def main():
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     model.to(device)
 
-    # Load data
+    # Load data 
     dataloaders = get_dataloaders(
         input_dir=input_dir,
         target_dir=target_dir,
@@ -118,11 +118,6 @@ def main():
         batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"]
     )
-
-    print(f"Number of domains: {len(dataloaders)}")
-    # Print lenght of each dataloader
-    for k, dataloader in dataloaders.items():
-        print(len(dataloader["train"]))
 
     # Train in a leave-one-cluster-out cross-validation fashion
     train_model_mdan(

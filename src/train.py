@@ -2,7 +2,6 @@ import torch
 import os
 import numpy as np
 import time
-import gc
 from tqdm import tqdm
 
 
@@ -46,67 +45,47 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
         for epoch in tqdm(range(num_epochs)):
             epoch_start_time = time.time()
             model.train()
-            train_loss = 0.0
-            total_domains = 0
             
             # Training Step
-            regression_losses = []
-            source_domain_losses = []
-            target_domain_losses = []
             for j, train_source_loader in enumerate(train_source_loaders):
-                print("Forward source")
-                for sx, selev, sy in tqdm(train_source_loader):
+                train_loss = 0.0
+                # Note: zip() iterates over the shortest of the two data loaders
+                for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
+                    temperature_t, elevation_t = tx.to(device), telev.to(device)
 
                     optimizer.zero_grad()
 
                     # Forward pass for source data
-                    output, s_domain_pred = model(temperature, elevation, domain_idx=j)
+                    output, s_domain_pred = model(temperature, elevation, domain_idx=j)                    
                     regression_loss = regression_criterion(output, target)
-                    s_domain_loss = domain_criterion(s_domain_pred, torch.ones_like(s_domain_pred))  # Source label = 1
-                    regression_losses.append(regression_loss)
-                    source_domain_losses.append(s_domain_loss)
-
-                print("Forward target")
-                for tx, telev, ty in tqdm(train_target_loader):
-                    temperature_t, elevation_t = tx.to(device), telev.to(device) 
-                    
-                    optimizer.zero_grad()
+                    source_labels = torch.ones(s_domain_pred.shape[0], dtype=torch.long, device=device)  # Class 1 for source
+                    s_domain_loss = domain_criterion(s_domain_pred, source_labels)  # Source label = 1
 
                     # Forward pass for target data (only domain classifiers)
                     _, t_domain_pred = model(temperature_t, elevation_t, domain_idx=j)
-                    t_domain_loss = domain_criterion(t_domain_pred, torch.zeros_like(t_domain_pred))  # Target label = 0
-                    target_domain_losses.append(t_domain_loss)
-                    
-                # Note: each domain is weighted equally
-                domain_losses = [s+t for s, t in zip(source_domain_losses, target_domain_losses)]
+                    target_labels = torch.zeros(t_domain_pred.shape[0], dtype=torch.long, device=device)  # Class 0 for target
+                    t_domain_loss = domain_criterion(t_domain_pred, target_labels)  # Target label = 0
 
-                # Convert lists to tensors
-                regression_losses = torch.stack(regression_losses)
-                domain_losses = torch.stack(domain_losses)
+                    # Compute final loss
+                    domain_loss = s_domain_loss + t_domain_loss
+                    # Note: If gamma is large, the exponentiation \exp(\gamma x) can explode to a very large number, causing an inf (overflow).
+                    # => use PyTorch’s built-in stable LSE function
+                    loss = torch.logsumexp(gamma * (regression_loss + mu * domain_loss), dim=0) / gamma
 
-                # Compute final loss
-                loss = torch.log(torch.sum(torch.exp(gamma * (regression_losses + mu * domain_losses)))) / gamma
-                
-                loss.backward()
-                optimizer.step()
+                    train_loss += loss.item()
+                    loss.backward()
+                    optimizer.step()
 
-                # Accumulate the training loss
-                train_loss += loss.item()
-                total_domains += 1
-            
-            # Average the training loss after the epoch loop
-            train_loss /= total_domains
-            train_losses.append(train_loss)
-            print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {train_loss:.4f}")
-        
-            # Validation step on target domain
+                train_loss /= len(train_source_loader)
+            # Track mean train loss on all domains
+            mean_train_loss = np.mean(train_loss)
+
+            # Validation step (only regression on target domain)
             model.eval()
             val_loss = 0.0
-            total_domains = 0
 
             with torch.no_grad():
-                regression_losses = []
                 for tx, telev, ty in val_target_loader:
                     temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
 
@@ -141,7 +120,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
                 with open(log_file, "w") as f:
                     f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
             with open(log_file, "a") as f:
-                f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
+                f.write(f"{epoch+1},{mean_train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
             # Early Stopping
             if config["early_stopping"] and early_stop_counter >= patience:

@@ -585,14 +585,17 @@ class UNet8x_Noise(nn.Module):
 
 # Multi source domain adaptation UNet
 class GradientReversalLayer(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input):
-        return input.view_as(input)
+    """
+    Implement the gradient reversal layer for the convenience of domain adaptation neural network.
+    The forward part is the identity function while the backward part is the negative function.
+    """
+    def forward(self, inputs):
+        return inputs
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        return -grad_output
-
+    def backward(self, grad_output):
+        grad_input = grad_output.clone()
+        grad_input = -grad_input
+        return grad_input
 
 class UNet8x_MDAN(nn.Module):
     def __init__(self, num_domains=11):  # Number of source domains
