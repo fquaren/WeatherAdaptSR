@@ -99,7 +99,6 @@ class SingleVariableDataset_v2(Dataset):
             # Ensure the target data is normalized
             target_data = (target_data - target_data.mean()) / target_data.std()
         if self.transform == "theta_e":
-            print("Applying transformation to the data: theta_e")
             # Load the necessary data
             with xr.open_dataset(input_file) as ds:
                 input_RH = torch.tensor(ds["RELHUM_2M"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
@@ -111,7 +110,5 @@ class SingleVariableDataset_v2(Dataset):
                 target_P_surf = torch.tensor(ds["PS"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
             # Apply transfromation
             target_data = compute_equivalent_potential_temperature(target_data, target_RH, target_P_surf)
-        else:
-            print("No transformation applied to the data. Available transformations: normalize, theta_e")
         
         return input_data, elevation_data, target_data
