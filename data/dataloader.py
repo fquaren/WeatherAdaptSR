@@ -2,7 +2,6 @@ from data.dataset import SingleVariableDataset_v2
 from torch.utils.data import DataLoader
 import os
 import re
-from torch.utils.data import DataLoader, ConcatDataset
 
 
 def get_file_splits(input_dir, target_dir, excluded_cluster):
@@ -36,7 +35,7 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
             elif year == 2019 and month % 2 == 1:
                 train_inputs.append(input_file_path)
                 train_targets.append(target_file_path)
-            elif year == 2015:
+            elif year == 2015 and month % 2 == 1:
                 test_inputs.append(input_file_path)
                 test_targets.append(target_file_path)
 
@@ -106,7 +105,7 @@ def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
-        dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader}#, "test": test_loader}
+        dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader, "test": test_loader}
 
     return dataloaders
 
