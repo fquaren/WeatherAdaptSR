@@ -116,13 +116,9 @@ def main():
         elev_dir=dem_dir,
         variable=variable,
         batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"]
+        num_workers=config["training"]["num_workers"],
+        transform=config["training"]["transform"],
     )
-
-    print(f"Number of domains: {len(dataloaders)}")
-    # Print lenght of each dataloader
-    for k, dataloader in dataloaders.items():
-        print(len(dataloader["train"]))
 
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster, loaders in dataloaders.items():

@@ -2,6 +2,7 @@ import torch
 import os
 import numpy as np
 import time
+from tqdm import tqdm
 
 
 # Train loop
@@ -41,11 +42,11 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
     
     model.to(device)
     
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         epoch_start_time = time.time()
         model.train()
         train_loss = 0.0
-        for temperature, elevation, target in train_loader:
+        for temperature, elevation, target in tqdm(train_loader):
             temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
             optimizer.zero_grad()
             output = model(temperature, elevation)

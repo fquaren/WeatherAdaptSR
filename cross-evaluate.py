@@ -208,7 +208,8 @@ def main():
         elev_dir=dem_dir,
         variable=config["data"]["variable"],
         batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"]
+        num_workers=config["training"]["num_workers"],
+        transform=config["training"]["transform"],
     )
 
     # Load criterion
