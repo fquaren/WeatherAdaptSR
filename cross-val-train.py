@@ -79,12 +79,13 @@ def main():
         config = yaml.safe_load(file)
         
     # Log experiment in experiments.csv: (Time, Model, Path)
-    local_dir = "../../work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
+    local_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
     if os.path.exists(local_dir):
         if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
             with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
                 file.write("Time,Model,Path\n")
         with open(os.path.join(local_dir, "experiments.csv"), "a") as file:
+            print(f"Appending to {os.path.join(local_dir, 'experiments.csv')}")
             # Append a line to the csv file
             file.write(f"{time},{model},{output_dir}\n")
 

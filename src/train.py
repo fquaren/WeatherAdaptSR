@@ -47,10 +47,11 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
             model.train()
             
             # Training Step
+            train_losses = []
             for j, train_source_loader in enumerate(train_source_loaders):
                 train_loss = 0.0
                 # Note: zip() iterates over the shortest of the two data loaders
-                for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
+                for k, ((sx, selev, sy), (tx, telev, ty)) in enumerate(zip(train_source_loader, train_target_loader)):
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
                     temperature_t, elevation_t = tx.to(device), telev.to(device)
 
@@ -78,8 +79,9 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
                     optimizer.step()
 
                 train_loss /= len(train_source_loader)
+                train_losses.append(train_loss)
             # Track mean train loss on all domains
-            mean_train_loss = np.mean(train_loss)
+            mean_train_loss = np.mean(train_losses)
 
             # Validation step (only regression on target domain)
             model.eval()
