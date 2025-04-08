@@ -80,37 +80,41 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
 
                 train_loss /= len(train_source_loader)
                 train_losses.append(train_loss)
-                print(f"Iteration {j}/{len(train_source_loader)}, Train loss: {train_loss}")
-            # Track mean train loss on all domains
+                print(f"Iteration {j}/{len(train_source_loaders)}, Train loss: {train_loss}")
+
+                # Validation step (only regression on target domain)
+                model.eval()
+                val_loss = 0.0
+
+                with torch.no_grad():
+                    for tx, telev, ty in val_target_loader:
+                        temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
+
+                        # Forward pass for target data
+                        output, _ = model(temperature, elevation, domain_idx=j)
+                        val_loss += regression_criterion(output, target).item()
+                    
+                    val_loss /= len(val_target_loader)
+                    scheduler.step(val_loss)
+                    val_losses.append(val_loss)
+
+                print(f"Validation, Val loss: {val_loss}")
+            
+            # Track mean train and val loss on all domains
             mean_train_loss = np.mean(train_losses)
-
-            # Validation step (only regression on target domain)
-            model.eval()
-            val_loss = 0.0
-
-            with torch.no_grad():
-                for tx, telev, ty in val_target_loader:
-                    temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
-
-                    # Forward pass for target data
-                    output, _ = model(temperature, elevation, domain_idx=j)
-                    val_loss += regression_criterion(output, target).item()
-                
-                val_loss /= len(val_target_loader)
-                scheduler.step(val_loss)
-                val_losses.append(val_loss)
+            mean_val_loss = np.mean(val_losses)
 
             # Save only the latest best model snapshot
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if mean_val_loss < best_val_loss:
+                best_val_loss = mean_val_loss
                 snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
                 torch.save({
                     "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict(),
-                    "train_loss": train_loss,
-                    "val_loss": val_loss
+                    "train_loss": mean_train_loss,
+                    "val_loss": mean_val_loss
                 }, snapshot_path)
                 early_stop_counter = 0
             else:
@@ -123,7 +127,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
                 with open(log_file, "w") as f:
                     f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
             with open(log_file, "a") as f:
-                f.write(f"{epoch+1},{mean_train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
+                f.write(f"{epoch+1},{mean_train_loss:.6f},{mean_val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
             # Early Stopping
             if config["early_stopping"] and early_stop_counter >= patience:
