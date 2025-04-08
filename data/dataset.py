@@ -6,12 +6,11 @@ from torch.utils.data import Dataset
 
 
 class SingleVariableDataset_v2(Dataset):
-    def __init__(self, variable, input_files, target_files, elev_dir, transform):
+    def __init__(self, variable, input_files, target_files, elev_dir):
         self.variable = variable
         self.input_files = input_files
         self.target_files = target_files
         self.elev_dir = elev_dir
-        self.transform = transform
         self.elev_files = self._map_elevation_files()
 
     def _extract_numbers(self, filename):

@@ -86,10 +86,10 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                     temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
 
                     # Forward pass for target data
-                    output, mmd_loss = model(temperature, elevation)
+                    output, _ = model(temperature, elevation)
                     regression_loss = regression_criterion(output, target)
 
-                    val_loss = regression_loss + lambda_mmd * mmd_loss
+                    val_loss = regression_loss
 
                     val_loss += val_loss.item()
 

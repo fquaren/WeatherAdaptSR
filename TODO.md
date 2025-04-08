@@ -6,3 +6,4 @@
 - [x] Implement MDD
 - [ ] Implement Domain Pairing Strategies
 - [ ] Implmement Domain Domain Weighting Strategies
+- [ ] Uniform model outputs for cleaner evaluation

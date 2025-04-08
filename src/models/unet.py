@@ -744,6 +744,7 @@ def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
 
     return mmd_loss
 
+
 class UNet8x_MMD(nn.Module):
     def __init__(self):
         super(UNet8x_MMD, self).__init__()
