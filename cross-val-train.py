@@ -24,16 +24,14 @@ def main():
 
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
-    parser.add_argument("--resume_exp", type=str, default=None, help="Path to experiment to resume")
     parser.add_argument("--method", type=str, default=None, help="Method")
     args = parser.parse_args()
-    resume_exp = args.resume_exp
 
     method = args.method
     if method == "mdan":
         config = "config_mdan"
     if method == "mmd":
-        config == "config_mmd"
+        config = "config_mmd"
 
     # Load config
     config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
@@ -49,22 +47,9 @@ def main():
     exp_name = config["experiment"]["name"]
     
     # Experiment id
-    # Get exp id from argparse
-    if resume_exp is None:
-        # Generate a new experiment ID
-        exp_id = generate_experiment_id()
-        print(f"Generated new experiment ID: {exp_id}")
-    else:
-        # Check if the experiment ID already exists
-        exp_id = resume_exp
-        existing_ids = [f.split("/")[-1] for f in glob.glob(os.path.join(exp_path, exp_name, "*"))]
-        # Check if the experiment ID exists
-        if exp_id in existing_ids:
-            print(f"Found experiment at {os.path.join(exp_path, exp_name, exp_id)} already exists. Resuming training.")
-        else:
-            print(f"Experiment ID {exp_id} does not exist. Retry.")
-            return
-        print(f"Resuming experiment with ID: {exp_id}")
+    # Generate a new experiment ID
+    exp_id = generate_experiment_id()
+    print(f"Generated new experiment ID: {exp_id}")
         
     # exp_id = generate_experiment_id()
     output_dir = os.path.join(exp_path, exp_name, exp_id)
