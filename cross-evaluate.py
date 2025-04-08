@@ -223,7 +223,7 @@ def main():
     mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
     for i, (excluded_cluster, loaders) in enumerate(dataloaders.items()):
         
-        print(f"Evaluating excluding cluster: {excluded_cluster}")
+        print(f"Evaluating model trained on cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
         evaluation_path = os.path.join(save_path, "evaluation")
