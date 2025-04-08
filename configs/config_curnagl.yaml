@@ -15,7 +15,7 @@ data:
 training:
   num_epochs: 40
   batch_size: 16
-  num_workers: 1
+  num_workers: 32  # set to 1 if training in curnagl
   early_stopping: True
   early_stopping_params:
     patience: 10

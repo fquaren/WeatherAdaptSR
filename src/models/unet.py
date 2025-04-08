@@ -696,8 +696,6 @@ class UNet8x_MDAN(nn.Module):
         return self.output(d_final3), domain_preds
 
 
-import torch
-
 def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
     """
     Computes the Maximum Mean Discrepancy (MMD) between source and target features.
@@ -711,22 +709,23 @@ def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
     Returns:
         MMD loss (scalar)
     """
+    
     def rbf_kernel(X, Y, sigma):
-        """
-        Computes the Gaussian RBF kernel between X and Y.
-        """
         XX = torch.sum(X**2, dim=1, keepdim=True)  # (N, 1)
         YY = torch.sum(Y**2, dim=1, keepdim=True)  # (M, 1)
         XY = torch.matmul(X, Y.t())  # (N, M)
-
         dists = torch.clamp(XX - 2 * XY + YY.t(), min=0.0)  # Squared L2 distance
-        K = torch.exp(-dists / (2 * sigma ** 2))  # Apply RBF kernel
-        return K
+        return torch.exp(-dists / (2 * sigma ** 2))  # RBF kernel
+
+    # Normalize features to prevent large magnitude issues
+    source_features = source_features / (source_features.norm(dim=1, keepdim=True) + 1e-6)
+    target_features = target_features / (target_features.norm(dim=1, keepdim=True) + 1e-6)
 
     # Compute adaptive sigma if not provided
     if sigma is None:
-        pairwise_dists = torch.cdist(source_features, target_features, p=2)
+        pairwise_dists = torch.norm(source_features[:, None] - target_features, dim=2, p=2)
         sigma = torch.median(pairwise_dists).item()
+        sigma = max(sigma, 1e-3)  # Avoid very small sigma
 
     # Compute kernel matrices
     if kernel == 'rbf':
@@ -740,9 +739,8 @@ def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
     else:
         raise ValueError("Invalid kernel type. Choose 'rbf' or 'linear'.")
 
-    # Normalize and compute MMD
-    N, M = source_features.shape[0], target_features.shape[0]
-    mmd_loss = K_ss.sum() / (N * N) + K_tt.sum() / (M * M) - 2 * K_st.sum() / (N * M)
+    # Compute normalized MMD loss
+    mmd_loss = K_ss.mean() + K_tt.mean() - 2 * K_st.mean()
 
     return mmd_loss
 

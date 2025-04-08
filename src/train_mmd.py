@@ -100,6 +100,9 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 scheduler.step(val_loss)
                 val_losses.append(val_loss)
 
+            # Print epoch 
+            print(f"Epoch {epoch}, Train loss: {mean_train_loss}, Validation loss: {val_loss}")
+
             # Save only the latest best model snapshot
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -109,7 +112,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict(),
-                    "train_loss": train_loss,
+                    "train_loss": mean_train_loss,
                     "val_loss": val_loss
                 }, snapshot_path)
                 early_stop_counter = 0
