@@ -123,7 +123,7 @@ def main():
         elev_dir=dem_dir,
         variable=variable,
         batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"]
+        num_workers=config["training"]["num_workers"],
     )
 
     # Train in a leave-one-cluster-out cross-validation fashion
