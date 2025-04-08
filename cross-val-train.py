@@ -79,7 +79,7 @@ def main():
     config_path = os.path.join(output_dir, f"config.yaml")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
-        
+
     # Log experiment in experiments.csv: (Time, Model, Path)
     local_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
     if os.path.exists(local_dir):

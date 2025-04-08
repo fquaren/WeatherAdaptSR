@@ -1,9 +1,7 @@
 # To do list
 
-- [x] Setup checkpoints SLURM jobs
-- [x] MSDA implementation
-- [x] Logging
-- [x] Implement evaluation setup
+- [x] Implement MDAN
+- [ ] Debug MDAN
 - [ ] Implement AdaBN
 - [x] Implement MDD
 - [ ] Implement Domain Pairing Strategies

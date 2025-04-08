@@ -53,7 +53,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
             for j, train_source_loader in enumerate(train_source_loaders):
                 train_loss = 0.0
                 # Note: zip() iterates over the shortest of the two data loaders
-                for (sx, selev, sy), (tx, telev, ty) in zip(train_source_loader, train_target_loader):
+                for k, ((sx, selev, sy), (tx, telev, ty)) in enumerate(zip(train_source_loader, train_target_loader)):
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
                     temperature_t, elevation_t = tx.to(device), telev.to(device)
 
@@ -69,6 +69,9 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                     loss.backward()
                     optimizer.step()
 
+                    # if k == 5:
+                    #     break
+
                 train_loss /= len(train_source_loader)
                 train_losses.append(train_loss)
             # Track mean train loss on all domains
@@ -79,12 +82,19 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
             val_loss = 0.0
 
             with torch.no_grad():
-                for tx, telev, ty in val_target_loader:
+                for k, (tx, telev, ty) in enumerate(val_target_loader):
                     temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
 
                     # Forward pass for target data
-                    output, _ = model(temperature, elevation, domain_idx=j)
-                    val_loss += regression_criterion(output, target).item()
+                    output, mmd_loss = model(temperature, elevation)
+                    regression_loss = regression_criterion(output, target)
+
+                    val_loss = regression_loss + lambda_mmd * mmd_loss
+
+                    val_loss += val_loss.item()
+
+                    # if k == 5:
+                    #     break
                 
                 val_loss /= len(val_target_loader)
                 scheduler.step(val_loss)
