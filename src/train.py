@@ -87,9 +87,12 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         else:
             early_stop_counter += 1
 
+        print(f"Epoch {epoch}, Train loss: {train_loss}, Val loss: {val_loss}")
+
         # Logging
         epoch_time = time.time() - epoch_start_time
         current_lr = optimizer.param_groups[0]['lr']
+        # current_lr = scheduler.get_last_lr() 
         if epoch == 0:
             with open(log_file, "w") as f:
                 f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
