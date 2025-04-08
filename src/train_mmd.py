@@ -46,7 +46,6 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
 
             # Gradually increase lambda_mmd(t) during training  with Annealing
             lambda_mmd = 0.001 + lambda_max * (epoch / num_epochs) ** 2
-            print(lambda_mmd)
             
             # Training Step
             train_losses = []
@@ -54,6 +53,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 train_loss = 0.0
                 # Note: zip() iterates over the shortest of the two data loaders
                 for k, ((sx, selev, sy), (tx, telev, ty)) in enumerate(zip(train_source_loader, train_target_loader)):
+                    iteration_start_time = time.time()
                     temperature, elevation, target = sx.to(device), selev.to(device), sy.to(device)
                     temperature_t, elevation_t = tx.to(device), telev.to(device)
 
@@ -74,6 +74,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
 
                 train_loss /= len(train_source_loader)
                 train_losses.append(train_loss)
+                print(f"Iteration {j}/{len(train_source_loader)}, Train loss: {train_loss}")
             # Track mean train loss on all domains
             mean_train_loss = np.mean(train_losses)
 
@@ -99,9 +100,6 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 val_loss /= len(val_target_loader)
                 scheduler.step(val_loss)
                 val_losses.append(val_loss)
-
-            # Print epoch 
-            print(f"Epoch {epoch}, Train loss: {mean_train_loss}, Validation loss: {val_loss}")
 
             # Save only the latest best model snapshot
             if val_loss < best_val_loss:

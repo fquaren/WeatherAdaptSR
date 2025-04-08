@@ -14,15 +14,15 @@ data:
 
 training:
   num_epochs: 40
-  batch_size: 16
-  num_workers: 32  # set to 1 if training in curnagl
+  batch_size: 128
+  num_workers: 36  # set to 1 if training in curnagl, max=72
   early_stopping: True
   early_stopping_params:
     patience: 10
   criterion: MSELoss
-  optimizer: Adam
+  optimizer: AdamW
   optimizer_params:
-    lr: 0.0005
+    lr: 0.0001
     weight_decay: 0.0001
   scheduler: ReduceLROnPlateau
   scheduler_params:
@@ -31,7 +31,7 @@ training:
     patience: 5
     verbose: True
   domain_adaptation: 
-    criterion: CrossEntropyLoss
+    mdan_criterion: CrossEntropyLoss
     lambda_max: 1
 
 testing:

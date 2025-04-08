@@ -12,7 +12,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
     scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
     
     regression_criterion = getattr(torch.nn, config["criterion"])()
-    domain_criterion = getattr(torch.nn, config["domain_adaptation"]["criterion"])()
+    domain_criterion = getattr(torch.nn, config["domain_adaptation"]["mdan_criterion"])()
     mu = config["domain_adaptation"]["mu"]
     gamma = config["domain_adaptation"]["gamma"]
 
@@ -80,6 +80,7 @@ def train_model_mdan(model, dataloaders, config, device, save_path):
 
                 train_loss /= len(train_source_loader)
                 train_losses.append(train_loss)
+                print(f"Iteration {j}/{len(train_source_loader)}, Train loss: {train_loss}")
             # Track mean train loss on all domains
             mean_train_loss = np.mean(train_losses)
 
