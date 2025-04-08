@@ -16,7 +16,7 @@ training:
   num_epochs: 40
   batch_size: 16
   transform: "theta_e"  # "normalize"
-  num_workers: 8  # change to 1 if training on curnagl
+  num_workers: 72  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
     patience: 10
