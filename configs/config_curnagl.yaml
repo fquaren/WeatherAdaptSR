@@ -29,7 +29,7 @@ training:
   scheduler_params:
     mode: "min"
     factor: 0.5
-    patience: 5
+    patience: 3
     verbose: True
 
 testing:
