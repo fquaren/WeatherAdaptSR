@@ -27,12 +27,6 @@ def compute_equivalent_potential_temperature(T, RH, P_surf):
     
     return theta_e
 
-class NormalizeTransform:
-    def __call__(self, temp, elev):
-        temp = (temp - temp.mean()) / temp.std()
-        elev = (elev - elev.mean()) / elev.std()
-        return temp, elev
-
 
 class SingleVariableDataset_v2(Dataset):
     def __init__(self, variable, input_files, target_files, elev_dir, transform=None):
@@ -92,12 +86,6 @@ class SingleVariableDataset_v2(Dataset):
         with xr.open_dataset(elev_file) as ds:
             elevation_data = torch.tensor(ds["HSURF"].values, dtype=torch.float32).unsqueeze(0)
 
-        if self.transform == "normalize":
-            transform = NormalizeTransform()
-            # Normalize the data
-            input_data, elevation_data = transform(input_data, elevation_data)
-            # Ensure the target data is normalized
-            target_data = (target_data - target_data.mean()) / target_data.std()
         if self.transform == "theta_e":
             # Load the necessary data
             with xr.open_dataset(input_file) as ds:
