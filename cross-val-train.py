@@ -24,14 +24,16 @@ def main():
 
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="curnagl", help="Local or curnagl config")
     parser.add_argument("--resume_exp", type=str, default=None, help="Path to experiment to resume")
     parser.add_argument("--method", type=str, default=None, help="Method")
     args = parser.parse_args()
-    config = "config_local" if args.config == "local" else "config_curnagl"
     resume_exp = args.resume_exp
     print("Using config: ", config)
     method = args.method
+    if method == "mdan":
+        config = "config_mdan"
+    if method == "mmd":
+        config == "config_mmd"
 
     # Load config
     config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
