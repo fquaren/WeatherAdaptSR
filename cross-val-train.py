@@ -28,7 +28,7 @@ def main():
     parser.add_argument("--method", type=str, default=None, help="Method")
     args = parser.parse_args()
     resume_exp = args.resume_exp
-    print("Using config: ", config)
+
     method = args.method
     if method == "mdan":
         config = "config_mdan"
