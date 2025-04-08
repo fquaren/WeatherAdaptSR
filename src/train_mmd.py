@@ -45,10 +45,10 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
             model.train()
 
             # Gradually increase lambda_mmd(t) during training  with Annealing
-            lambda_mmd = 0.001 + lambda_max * (epoch / num_epochs) ** 2
+            lambda_mmd = lambda_max * (epoch / num_epochs) ** 2
             
             # Training Step
-            train_losses = []
+            train_losses_loaders = []
             for j, train_source_loader in enumerate(train_source_loaders):
                 train_loss = 0.0
                 # Note: zip() iterates over the shortest of the two data loaders
@@ -68,32 +68,30 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                     loss.backward()
                     optimizer.step()
 
-                    # if k == 5:
+                    # if k == 1:
                     #     break
 
                 train_loss /= len(train_source_loader)
-                train_losses.append(train_loss)
+                train_losses_loaders.append(train_loss)
                 print(f"Iteration {j}/{len(train_source_loaders)}, Train loss: {train_loss}")
             # Track mean train loss on all domains
-            mean_train_loss = np.mean(train_losses)
+            mean_train_loss = np.mean(train_losses_loaders)
+            train_losses.append(mean_train_loss)
 
             # Validation step (only regression on target domain)
             model.eval()
             val_loss = 0.0
-
             with torch.no_grad():
                 for k, (tx, telev, ty) in enumerate(val_target_loader):
                     temperature, elevation, target = tx.to(device), telev.to(device), ty.to(device)
 
                     # Forward pass for target data
                     output, _ = model(temperature, elevation)
-                    regression_loss = regression_criterion(output, target)
+                    loss = regression_criterion(output, target)
 
-                    val_loss = regression_loss
+                    val_loss += loss.item()
 
-                    val_loss += val_loss.item()
-
-                    # if k == 5:
+                    # if k == 1:
                     #     break
                 
                 val_loss /= len(val_target_loader)

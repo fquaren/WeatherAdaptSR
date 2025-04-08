@@ -228,7 +228,7 @@ def main():
         evaluation_path = os.path.join(save_path, "evaluation")
         os.makedirs(evaluation_path, exist_ok=True)
 
-        # plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster)
+        plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster)
 
         snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         if os.path.exists(snapshot_path):

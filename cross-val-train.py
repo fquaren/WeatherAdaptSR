@@ -24,7 +24,7 @@ def main():
 
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", type=str, default=None, help="Method")
+    parser.add_argument("--method", type=str, default="mmd", help="Method")
     args = parser.parse_args()
 
     method = args.method
