@@ -2,6 +2,45 @@ from data.dataset import SingleVariableDataset_v2
 from torch.utils.data import DataLoader
 import os
 import re
+import numpy as np
+from tqdm import tqdm
+import json
+
+
+# def compute_dataset_statistics(dataset, save_path):
+#     """Computes the mean and std for input, target, and elevation across the dataset using NumPy."""
+    
+#     # Check if statistics already exist
+#     if os.path.exists(save_path):
+#         with open(save_path, "r") as f:
+#             return json.load(f)  # Load existing statistics
+    
+#     input_list = []
+#     target_list = []
+#     elev_list = []
+
+#     # Collect all data as NumPy arrays
+#     for i in tqdm(range(len(dataset))):
+#         input_data, elevation_data, target_data = dataset[i]
+#         input_list.append(input_data.numpy().flatten())  # Convert to NumPy and flatten
+#         target_list.append(target_data.numpy().flatten())
+#         elev_list.append(elevation_data.numpy().flatten())
+
+#     # Concatenate all arrays for vectorized operations
+#     input_arr = np.concatenate(input_list)
+#     target_arr = np.concatenate(target_list)
+#     elev_arr = np.concatenate(elev_list)
+
+#     # Compute mean and std in a single step
+#     input_mean, input_std = np.mean(input_arr), np.std(input_arr)
+#     target_mean, target_std = np.mean(target_arr), np.std(target_arr)
+#     elev_mean, elev_std = np.mean(elev_arr), np.std(elev_arr)
+
+#     return {
+#         "input": (input_mean, input_std),
+#         "target": (target_mean, target_std),
+#         "elevation": (elev_mean, elev_std),
+#     }
 
 
 def get_file_splits(input_dir, target_dir, excluded_cluster):
@@ -77,9 +116,16 @@ def get_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num
 
         file_splits = get_file_splits(input_dir, target_dir, excluded_cluster)
 
-        train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir, transform)
-        val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir, transform)
-        test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir, transform)
+        # train_stats = compute_dataset_statistics(SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir, transform), input_dir)
+        # val_stats = compute_dataset_statistics(SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir, transform), input_dir)
+        # test_stats = compute_dataset_statistics(SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir, transform), input_dir)
+        # print(train_stats)
+        # print(val_stats)
+        # print(test_stats)
+
+        train_dataset = SingleVariableDataset_v2(variable, *file_splits["train"], elev_dir) #, normalization_stats=train_stats)
+        val_dataset = SingleVariableDataset_v2(variable, *file_splits["val"], elev_dir) #, normalization_stats=val_stats)
+        test_dataset = SingleVariableDataset_v2(variable, *file_splits["test"], elev_dir) #, normalization_stats=test_stats)
 
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
