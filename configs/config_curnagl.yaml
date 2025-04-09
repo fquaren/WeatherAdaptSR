@@ -3,7 +3,7 @@ experiment:
   name: "UNet_experiments_12" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
-  model: UNet8x_Noise_DO # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise, UNet8x_Noise_DO, UNet8x_Noise_Trainable_DO
+  model: UNet8x_HighRes_Noise_Trainable_DO # UNet8x, UNet8x_BN, UNet8x_DO, UNet8x_DO_BN, UNet8x_Noise, UNet8x_Noise_DO, UNet8x_Noise_Trainable_DO, UNet8x_HighRes_Noise_Trainable_DO
 
 data:
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
@@ -16,7 +16,7 @@ training:
   num_epochs: 40
   batch_size: 16
   transform: None # "theta_e"  # "normalize"
-  num_workers: 6  # change to 1 if training on curnagl
+  num_workers: 1  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
     patience: 10

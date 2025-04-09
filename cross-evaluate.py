@@ -182,7 +182,7 @@ def main():
         num_workers = config["training"]["num_workers"]
     else:
         num_workers = args.num_workers
-    print(f"Using {num_workers} workers.")
+    print(f"Num workers: {num_workers}")
 
     # Set device
     device = args.device
