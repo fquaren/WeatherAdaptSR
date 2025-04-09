@@ -163,6 +163,7 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="Device to use for evaluation (cpu or cuda)")
     parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
     parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
+    parser.add_argument("--num_workers", type=int, default=None, help="Number of workers (optional)")
     args = parser.parse_args()    
     
     exp_path = args.exp_path
@@ -174,6 +175,13 @@ def main():
     config_path = os.path.join(exp_path, "config.yaml")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
+
+    # Num workers 
+    num_workers = args.num_workers
+    if num_workers is None:
+        num_workers = config["training"]["num_workers"]
+    else:
+        num_workers = args.num_workers
 
     # Set device
     device = args.device
