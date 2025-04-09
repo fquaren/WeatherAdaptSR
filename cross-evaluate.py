@@ -182,6 +182,7 @@ def main():
         num_workers = config["training"]["num_workers"]
     else:
         num_workers = args.num_workers
+    print(f"Using {num_workers} workers.")
 
     # Set device
     device = args.device
@@ -216,7 +217,7 @@ def main():
         elev_dir=dem_dir,
         variable=config["data"]["variable"],
         batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"],
+        num_workers=num_workers,
         transform=config["training"]["transform"],
     )
 
