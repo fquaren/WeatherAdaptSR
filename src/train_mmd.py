@@ -9,24 +9,25 @@ import pandas as pd
 # Train loop
 def train_model_mmd(model, dataloaders, config, device, save_path):
     
-    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
-    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
-    
-    regression_criterion = getattr(torch.nn, config["criterion"])()
-    lambda_max = config["domain_adaptation"]["lambda_max"]
-
-    num_epochs = config["num_epochs"]
-    patience = config["early_stopping_params"]["patience"]
-
-    best_val_loss = float("inf")
-    train_losses, val_losses = [], []
-    early_stop_counter = 0
-
     for cluster_name, _ in dataloaders.items():
+
+        optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
+        scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
+
+        regression_criterion = getattr(torch.nn, config["criterion"])()
+        lambda_max = config["domain_adaptation"]["lambda_max"]
+
+        num_epochs = config["num_epochs"]
+        patience = config["early_stopping_params"]["patience"]
+
+        best_val_loss = float("inf")
+        train_losses, val_losses = [], []
+        early_stop_counter = 0
+
         target_cluster = cluster_name
         cluster_dir = os.path.join(save_path, target_cluster)
         log_file = os.path.join(cluster_dir, "training_log.csv")
-        checkpoint_path = os.path(cluster_dir, "best_checkpoint.pth")
+        checkpoint_path = os.path.join(cluster_dir, "best_checkpoint.pth")
         
         # Check if you have to resume experiment
         if os.path.isdir(cluster_dir):

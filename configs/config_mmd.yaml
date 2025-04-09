@@ -37,4 +37,4 @@ training:
     lambda_max: 1
 
 testing:
-  criterion: CrossEntropyLoss
+  criterion: MSELoss

@@ -55,6 +55,8 @@ def main():
             output_dir = resume
             exp_id = resume.split("/")[-1]
             print(f"Resuming experiment {exp_id} stored at {output_dir} ...")
+        else:
+            print(f"{output_dir} not found. Provide different path.")
     else:
         print("Starting new experiment ...")
         exp_id = generate_experiment_id()
