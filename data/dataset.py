@@ -7,13 +7,25 @@ from torch.utils.data import Dataset
 
 
 def compute_equivalent_potential_temperature(T, RH, P_surf):
-    """Compute equivalent potential temperature θ_e (K) for GPU-accelerated tensors."""
+    """Compute equivalent potential temperature θ_e (K) for GPU-accelerated tensors.
+    
+    Args:
+        T (Tensor): Temperature in Kelvin (K)
+        RH (Tensor): Relative humidity (0 to 1)
+        P_surf (Tensor): Surface pressure in hPa
+        
+    Returns:
+        Tensor: Equivalent potential temperature θ_e in Kelvin (K)
+    """
     L_v = 2.5e6  # Latent heat of vaporization (J/kg)
     cp = 1005    # Specific heat of dry air (J/kg/K)
     epsilon = 0.622  # Ratio of molecular weights of water vapor to dry air
 
+    # Convert temperature from Kelvin to Celsius for the saturation vapor pressure formula
+    T_Celsius = T - 273.15
+
     # Compute saturation vapor pressure (hPa) using Tetens' formula
-    e_s = 6.112 * torch.exp((17.67 * T) / (T + 243.5))
+    e_s = 6.112 * torch.exp((17.67 * T_Celsius) / (T_Celsius + 243.5))
     e = RH * e_s  # Actual vapor pressure (hPa)
     
     # Mixing ratio (kg/kg)
