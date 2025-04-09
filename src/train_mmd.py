@@ -3,6 +3,7 @@ import os
 import numpy as np
 import time
 from tqdm import tqdm
+import pandas as pd
 
 
 # Train loop
@@ -25,18 +26,23 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
         target_cluster = cluster_name
         cluster_dir = os.path.join(save_path, target_cluster)
         log_file = os.path.join(cluster_dir, "training_log.csv")
+        checkpoint_path = os.path(cluster_dir, "best_checkpoint.pth")
         
         # Check if you have to resume experiment
         if os.path.isdir(cluster_dir):
             print(f"Found {cluster_name} ...")
-            # check if training_log is saved
-            start_epoch = 0  # TODO: load loss from best checkpoint
-            if start_epoch < num_epochs:
-                print(f"Resuming training for {cluster_name} starting from {start_epoch}")
-                # Fill train and val losses from file
-                train_losses.extend([]) # TODO: Extend until resuming epoch
-                val_losses.extend([])
-                # TODO: Load model from best checkpoint
+            if os.path.isfile(checkpoint_path) and os.path.isfile(log_file):                
+                checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+                start_epoch = checkpoint.get("epoch", None)
+                if start_epoch < num_epochs:
+                    print(f"Resuming training for {cluster_name} starting from {start_epoch}")
+                    df = pd.read_csv(log_file)
+                    train_losses_list = df[df["Epoch"] <= start_epoch]["Train Loss"].to_numpy()
+                    val_losses_list = df[df["Epoch"] <= start_epoch]["Validation Loss"].to_numpy()
+                    train_losses.extend(train_losses_list)
+                    val_losses.extend(val_losses_list)
+                    best_val_loss = val_losses_list[-1]
+                    model.load_state_dict(checkpoint["model_state_dict"])
         else:
             os.makedirs(cluster_dir, exist_ok=True)
             start_epoch = 0
@@ -113,10 +119,9 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 print(f"Validation, Val loss: {val_loss}")
 
             # Save only the latest best model snapshot
-            # TODO: I might want to save also intermediate snapshots
+            # TODO: I might want to save also intermediate snapshots, this presumes that the best is the last
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
                 torch.save({
                     "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
@@ -124,7 +129,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                     "scheduler_state_dict": scheduler.state_dict(),
                     "train_loss": mean_train_loss,
                     "val_loss": val_loss
-                }, snapshot_path)
+                }, checkpoint_path)
                 early_stop_counter = 0
             else:
                 early_stop_counter += 1
@@ -143,7 +148,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 print("Early stopping triggered.")
                 break
         
-        print(f"Training with {target_cluster} as target domain complete, best model saved as:", snapshot_path)
+        print(f"Training with {target_cluster} as target domain complete, best model saved as:", checkpoint_path)
 
         # Save losses data
         np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
