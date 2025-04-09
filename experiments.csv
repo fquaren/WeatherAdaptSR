@@ -28,3 +28,8 @@ Time,Model,Path
 2025-04-08 22:00:27.986395,UNet8x,/scratch/fquareng/experiments/UNet_experiments_12/cjfi
 2025-04-08 22:02:21.620392,UNet8x,/scratch/fquareng/experiments/UNet_experiments_12/97q1
 2025-04-08 22:02:54.709190,UNet8x,/scratch/fquareng/experiments/UNet_experiments_12/s59q
+2025-04-08 23:04:27.230673,UNet8x_Noise,/scratch/fquareng/experiments/UNet_experiments_12/12z4
+2025-04-08 23:05:31.900339,UNet8x_Noise_DO,/scratch/fquareng/experiments/UNet_experiments_12/31zy
+2025-04-08 23:08:53.856705,UNet8x_Noise_DO,/scratch/fquareng/experiments/UNet_experiments_12/ge7d
+2025-04-08 23:09:53.247182,UNet8x_Noise_DO,/scratch/fquareng/experiments/UNet_experiments_12/yriz
+2025-04-08 23:10:27.996950,UNet8x_Noise_DO,/scratch/fquareng/experiments/UNet_experiments_12/krwq
