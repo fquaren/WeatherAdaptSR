@@ -24,7 +24,8 @@ def main():
 
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", type=str, default="mmd", help="Method")
+    parser.add_argument("--method", type=str, default="mmd", help="Domain adaptaion method.")
+    parser.add_argument("--resume", type=str, default=None, help="Path experiment to resume.")
     args = parser.parse_args()
 
     method = args.method
@@ -48,13 +49,20 @@ def main():
     
     # Experiment id
     # Generate a new experiment ID
-    exp_id = generate_experiment_id()
-    print(f"Generated new experiment ID: {exp_id}")
-        
-    # exp_id = generate_experiment_id()
-    output_dir = os.path.join(exp_path, exp_name, exp_id)
-    print(f"Experiment ID: {output_dir}")
-    os.makedirs(output_dir, exist_ok=True)
+    resume = args.resume
+    if resume:
+        if os.path.isdir(resume):
+            output_dir = resume
+            exp_id = resume.split("/")[-1]
+            print(f"Resuming experiment {exp_id} stored at {output_dir} ...")
+    else:
+        print("Starting new experiment ...")
+        exp_id = generate_experiment_id()
+        print(f"Generated new experiment ID: {exp_id}")
+        # exp_id = generate_experiment_id()
+        output_dir = os.path.join(exp_path, exp_name, exp_id)
+        print(f"Experiment ID: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
 
     # Save config experiment
     time = str(pd.Timestamp.now()) 

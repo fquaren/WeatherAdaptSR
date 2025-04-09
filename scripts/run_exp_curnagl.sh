@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name mdan
+#SBATCH --job-name mmd
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -24,4 +24,4 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
-micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
+micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train-mmd.py

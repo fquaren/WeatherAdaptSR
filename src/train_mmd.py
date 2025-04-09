@@ -24,10 +24,23 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
     for cluster_name, _ in dataloaders.items():
         target_cluster = cluster_name
         cluster_dir = os.path.join(save_path, target_cluster)
-        os.makedirs(cluster_dir, exist_ok=True)
-        # Logging
         log_file = os.path.join(cluster_dir, "training_log.csv")
         
+        # Check if you have to resume experiment
+        if os.path.isdir(cluster_dir):
+            print(f"Found {cluster_name} ...")
+            # check if training_log is saved
+            start_epoch = 0  # TODO: load loss from best checkpoint
+            if start_epoch < num_epochs:
+                print(f"Resuming training for {cluster_name} starting from {start_epoch}")
+                # Fill train and val losses from file
+                train_losses.extend([]) # TODO: Extend until resuming epoch
+                val_losses.extend([])
+                # TODO: Load model from best checkpoint
+        else:
+            os.makedirs(cluster_dir, exist_ok=True)
+            start_epoch = 0
+
         # Separate source and target loaders
         train_source_loaders = []
         val_source_loaders = []
@@ -40,7 +53,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 val_source_loaders.append(loaders["val"])
 
         print(f"Training with {target_cluster} as target domain...")
-        for epoch in tqdm(range(num_epochs)):
+        for epoch in tqdm(range(start_epoch, num_epochs)):
             epoch_start_time = time.time()
             model.train()
 
@@ -100,6 +113,7 @@ def train_model_mmd(model, dataloaders, config, device, save_path):
                 print(f"Validation, Val loss: {val_loss}")
 
             # Save only the latest best model snapshot
+            # TODO: I might want to save also intermediate snapshots
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
