@@ -192,8 +192,8 @@ def main():
     
     # Get dataloaders
     if args.local is not None:
-        input_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
-        target_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
+        input_dir="/Users/fquareng/data/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
+        target_dir="/Users/fquareng/data/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
         dem_dir="/Users/fquareng/data/dem_squares"
     else:
         input_dir = os.path.join(config["data"]["data_path"], config["data"]["input_path"])
