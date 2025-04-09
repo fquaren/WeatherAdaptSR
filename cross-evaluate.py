@@ -192,8 +192,8 @@ def main():
     
     # Get dataloaders
     if args.local is not None:
-        input_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_blurred"
-        target_dir="/Users/fquareng/data/8h-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold"
+        input_dir="/Users/fquareng/data/data/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
+        target_dir="/Users/fquareng/data/data/DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
         dem_dir="/Users/fquareng/data/dem_squares"
     else:
         input_dir = os.path.join(config["data"]["data_path"], config["data"]["input_path"])
@@ -233,7 +233,7 @@ def main():
 
         snapshot_path = os.path.join(save_path, "best_snapshot.pth")
         if os.path.exists(snapshot_path):
-            snapshot = torch.load(os.path.join(snapshot_path), map_location=torch.device(device))
+            snapshot = torch.load(os.path.join(snapshot_path), map_location=torch.device(device), weights_only=False)
             model.load_state_dict(snapshot["model_state_dict"])
             print(f"Loaded model from {snapshot_path}")
         else:
