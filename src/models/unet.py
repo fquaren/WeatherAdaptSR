@@ -703,7 +703,7 @@ class UNet8x_HighRes_Noise_Trainable_DO(nn.Module):
         )
 
         # Define encoding layers
-        self.encoder1 = self.conv_block(66, 64, dropout_prob=0)  # Adjusted for extra noise channel
+        self.encoder1 = self.conv_block(129, 64, dropout_prob=0)  # Adjusted for extra noise channel
         self.encoder2 = self.conv_block(64, 128, dropout_prob=0)
         self.encoder3 = self.conv_block(128, 256, dropout_prob)
         self.pool = nn.MaxPool2d(2)

@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name eval_t9pq
+#SBATCH --job-name eval_12z4
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -24,7 +24,7 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
-micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "/scratch/fquareng/experiments/UNet_experiments_12/t9pq"
+micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "/scratch/fquareng/experiments/UNet_experiments_12/12z4"
 
 # Evaluate all experiments in the folder
 # base_path=/scratch/fquareng/experiments/UNet_experiments_12
