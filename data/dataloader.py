@@ -77,15 +77,16 @@ def get_file_splits(input_dir, target_dir, excluded_cluster):
             target_file_path = os.path.join(target_path, target_file)
 
             if cluster == excluded_cluster:
+                if year == 2015 and month % 2 == 1:
+                    test_inputs.append(input_file_path)
+                    test_targets.append(target_file_path)
+            else:
+                if year == 2019 and month % 2 == 1:
+                    train_inputs.append(input_file_path)
+                    train_targets.append(target_file_path)
                 if year == 2017 and month in [3, 6, 9, 12]:
                     val_inputs.append(input_file_path)
                     val_targets.append(target_file_path)
-            elif year == 2019 and month % 2 == 1:
-                train_inputs.append(input_file_path)
-                train_targets.append(target_file_path)
-            elif year == 2015 and month % 2 == 1:
-                test_inputs.append(input_file_path)
-                test_targets.append(target_file_path)
 
     return {
         "train": (train_inputs, train_targets),

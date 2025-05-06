@@ -1,6 +1,6 @@
 experiment:
   seed: 0
-  name: "UNet_8x_baseline_T2M"
+  name: "UNet_8x_cross_validation"
   save_dir: "/Users/fquareng/phd/WeatherAdaptSR/experiments"
   device: "gpu"
   model: UNet8x

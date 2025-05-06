@@ -92,7 +92,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         # Logging
         epoch_time = time.time() - epoch_start_time
         current_lr = optimizer.param_groups[0]['lr']
-        # current_lr = scheduler.get_last_lr() 
+        # current_lr = scheduler.get_last_lr() # TODO: fix this
         if epoch == 0:
             with open(log_file, "w") as f:
                 f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")

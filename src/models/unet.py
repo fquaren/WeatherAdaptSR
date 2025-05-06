@@ -224,10 +224,10 @@ class UNet8x_DO(nn.Module):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
+            nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
+            nn.Dropout2d(dropout_prob)
         )
     
     def forward(self, variable, elevation):  
@@ -314,11 +314,11 @@ class UNet8x_DO_BN(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
+            nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
+            nn.Dropout2d(dropout_prob)
         )
     
     def forward(self, variable, elevation):  
@@ -362,7 +362,7 @@ class UNet8x_DO_BN(nn.Module):
 
 
 class UNet8x_Noise(nn.Module):
-    def __init__(self, dropout_prob=0, noise_std=0.1):
+    def __init__(self, noise_std=0.1):
         super(UNet8x_Noise, self).__init__()
 
         # Fixed noise standard deviation (non-trainable)
@@ -371,32 +371,29 @@ class UNet8x_Noise(nn.Module):
         # Elevation Downsampling Block
         self.downsample_elevation = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )
 
         # Define encoding layers
-        self.encoder1 = self.conv_block(65, 64, dropout_prob=0)  
-        self.encoder2 = self.conv_block(64, 128, dropout_prob=0)
-        self.encoder3 = self.conv_block(128, 256, dropout_prob)
+        self.encoder1 = self.conv_block(65, 64)  
+        self.encoder2 = self.conv_block(64, 128)
+        self.encoder3 = self.conv_block(128, 256)
         self.pool = nn.MaxPool2d(2)
         
         # Bottleneck
-        self.bottleneck = self.conv_block(256, 512, dropout_prob)
+        self.bottleneck = self.conv_block(256, 512)
         
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.decoder3 = self.conv_block(256 + 256, 256, dropout_prob)
+        self.decoder3 = self.conv_block(256 + 256, 256)
         self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.decoder2 = self.conv_block(128 + 128, 128, dropout_prob=0)
+        self.decoder2 = self.conv_block(128 + 128, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.decoder1 = self.conv_block(64 + 64, 64, dropout_prob=0)
+        self.decoder1 = self.conv_block(64 + 64, 64)
         
         # Additional upsampling layers for 8x resolution
         self.upconv_final1 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
@@ -404,16 +401,12 @@ class UNet8x_Noise(nn.Module):
         self.upconv_final3 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
         self.output = nn.Conv2d(64, 1, kernel_size=1)
         
-    def conv_block(self, in_channels, out_channels, dropout_prob):
+    def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
         )
     
     def forward(self, variable, elevation):  
@@ -463,9 +456,9 @@ class UNet8x_Noise(nn.Module):
         return self.output(d_final3)
 
 
-class UNet8x_Noise_DO(nn.Module):
+class UNet8x_Noise_DO_BN(nn.Module):
     def __init__(self, dropout_prob=0.3, noise_std=0.1):
-        super(UNet8x_Noise_DO, self).__init__()
+        super(UNet8x_Noise_DO_BN, self).__init__()
 
         # Fixed noise standard deviation (non-trainable)
         self.noise_std = noise_std
@@ -473,13 +466,10 @@ class UNet8x_Noise_DO(nn.Module):
         # Elevation Downsampling Block
         self.downsample_elevation = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )
 
@@ -511,11 +501,11 @@ class UNet8x_Noise_DO(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
+            nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
+            nn.Dropout2d(dropout_prob)
         )
     
     def forward(self, variable, elevation):  
@@ -565,9 +555,9 @@ class UNet8x_Noise_DO(nn.Module):
         return self.output(d_final3)
 
 
-class UNet8x_Noise_Trainable_DO(nn.Module):
+class UNet8x_Noise_Trainable_DO_BN(nn.Module):
     def __init__(self, dropout_prob=0.2):
-        super(UNet8x_Noise_Trainable_DO, self).__init__()
+        super(UNet8x_Noise_Trainable_DO_BN, self).__init__()
 
         # Input noise parameters (learned)
         self.input_log_var = nn.Parameter(torch.zeros(1))  # log variance for input noise
@@ -613,11 +603,11 @@ class UNet8x_Noise_Trainable_DO(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
+            nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
+            nn.Dropout2d(dropout_prob)
         )
     
     def forward(self, variable, elevation):  
@@ -669,9 +659,9 @@ class UNet8x_Noise_Trainable_DO(nn.Module):
         return self.output(d_final3)
     
 
-class UNet8x_HighRes_Noise_Trainable_DO(nn.Module):
+class UNet8x_HighRes_Noise_Trainable_DO_BN(nn.Module):
     def __init__(self, dropout_prob=0.2):
-        super(UNet8x_HighRes_Noise_Trainable_DO, self).__init__()
+        super(UNet8x_HighRes_Noise_Trainable_DO_BN, self).__init__()
 
         # Input noise parameters (learned)
         self.input_log_var = nn.Parameter(torch.zeros(1))  # log variance for input noise
@@ -730,11 +720,11 @@ class UNet8x_HighRes_Noise_Trainable_DO(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob),
+            nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_prob)
+            nn.Dropout2d(dropout_prob)
         )
     
     def forward(self, variable, elevation, downscaling_factor=8):  
