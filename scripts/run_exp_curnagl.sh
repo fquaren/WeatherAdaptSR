@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name test
+#SBATCH --job-name UNet
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
