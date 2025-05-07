@@ -37,3 +37,8 @@ Time,Model,Path
 2025-04-09 09:59:05.598958,UNet8x_HighRes_Noise_Trainable_DO,/scratch/fquareng/experiments/UNet_experiments_12/7aes
 2025-04-09 10:13:39.975882,UNet8x_HighRes_Noise_Trainable_DO,/scratch/fquareng/experiments/UNet_experiments_12/43g5
 2025-04-09 10:27:42.157183,UNet8x_HighRes_Noise_Trainable_DO,/scratch/fquareng/experiments/UNet_experiments_12/auld
+2025-05-06 17:02:16.532013,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/dibo
+2025-05-06 21:13:21.522947,UNet8x_DO_BN,/scratch/fquareng/experiments/UNet_cross_val/atbv
+2025-05-07 09:00:29.155773,UNet8x_Noise_Trainable_DO_BN,/scratch/fquareng/experiments/UNet_cross_val/xjc6
+2025-05-07 09:01:31.313764,UNet8x_Noise_Trainable_DO_BN,/scratch/fquareng/experiments/UNet_cross_val/15bu
+2025-05-07 09:29:00.514952,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/vmu4

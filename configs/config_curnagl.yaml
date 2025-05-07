@@ -23,7 +23,7 @@ data:
 training:
   num_epochs: 40
   batch_size: 8
-  transform: None  # None, "theta_e" 
+  transform: theta_e  # None, "theta_e" 
   num_workers: 1  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
