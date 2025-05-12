@@ -6,16 +6,24 @@ from tqdm import tqdm
 
 
 # Train loop
-def train_model(model, excluding_cluster, train_loader, val_loader, config, device, save_path):
+def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, config, device, save_path, optimize=False, trial=None):
     
-    optimizer = getattr(torch.optim, config["optimizer"])(model.parameters(), **config["optimizer_params"])
-    scheduler = getattr(torch.optim.lr_scheduler, config["scheduler"])(optimizer, **config["scheduler_params"])
-    criterion = getattr(torch.nn, config["criterion"])()
+    if optimize:
+        # Hyperparameter optimization
+        lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
+        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+    else:
+        lr = config["domain_specific"][excluding_cluster]["optimizer_params"]["lr"]
+        weight_decay = config["domain_specific"][excluding_cluster]["optimizer_params"]["weight_decay"]
+    
+    optimizer = getattr(torch.optim, config["training"]["optimizer"])(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
+    criterion = getattr(torch.nn, config["training"]["criterion"])()
 
-    num_epochs = config["num_epochs"]
-    patience = config["early_stopping_params"]["patience"]
+    num_epochs = config["training"]["num_epochs"]
+    patience = config["training"]["early_stopping_params"]["patience"]
 
-    best_val_loss = float("inf")
+    batch_train_losses, val_batch_losses = [], []
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
@@ -39,9 +47,14 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
 
     # Logging
     log_file = os.path.join(cluster_dir, "training_log.csv")
-    
-    model.to(device)
-    
+    if os.path.exists(log_file):
+        with open(log_file, "a") as f:
+            f.write(f"Resuming training from epoch {start_epoch+1}\n")
+    else:
+        with open(log_file, "w") as f:
+            f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
+
+    # Training loop
     for epoch in tqdm(range(num_epochs)):
         epoch_start_time = time.time()
         model.train()
@@ -54,6 +67,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            batch_train_losses.append(loss.item())
         
         train_loss /= len(train_loader)
         train_losses.append(train_loss)
@@ -66,6 +80,7 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
                 temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
                 output = model(temperature, elevation)
                 val_loss += criterion(output, target).item()
+                val_batch_losses.append(criterion(output, target).item())
         
         val_loss /= len(val_loader)
         val_losses.append(val_loss)
@@ -93,14 +108,11 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
         epoch_time = time.time() - epoch_start_time
         current_lr = optimizer.param_groups[0]['lr']
         # current_lr = scheduler.get_last_lr() # TODO: fix this
-        if epoch == 0:
-            with open(log_file, "w") as f:
-                f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
         with open(log_file, "a") as f:
             f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
         # Early Stopping
-        if config["early_stopping"] and early_stop_counter >= patience:
+        if config["training"]["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
             break
 
@@ -108,6 +120,8 @@ def train_model(model, excluding_cluster, train_loader, val_loader, config, devi
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
+    np.save(os.path.join(cluster_dir, "batch_train_losses.npy"), np.array(batch_train_losses))
     np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
+    np.save(os.path.join(cluster_dir, "batch_val_losses.npy"), np.array(batch_val_losses))
 
-    return
+    return best_val_loss

@@ -42,3 +42,7 @@ Time,Model,Path
 2025-05-07 09:00:29.155773,UNet8x_Noise_Trainable_DO_BN,/scratch/fquareng/experiments/UNet_cross_val/xjc6
 2025-05-07 09:01:31.313764,UNet8x_Noise_Trainable_DO_BN,/scratch/fquareng/experiments/UNet_cross_val/15bu
 2025-05-07 09:29:00.514952,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/vmu4
+2025-05-12 14:05:47.434066,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/xaji
+2025-05-12 14:06:40.262398,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/d4er
+2025-05-12 14:08:23.393567,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/91oy
+2025-05-12 14:10:25.191947,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/cbbx

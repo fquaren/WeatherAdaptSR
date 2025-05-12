@@ -7,7 +7,7 @@ import argparse
 import yaml
 from tqdm import tqdm
 
-from data.dataloader import get_dataloaders
+from data.dataloader import get_test_dataloaders
 from src.models import unet
 
 
@@ -149,8 +149,8 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
     ax.set_yticks(np.arange(len(dataloaders)))
     ax.set_xticklabels(list(dataloaders.keys()))
     ax.set_yticklabels(list(dataloaders.keys()))
-    plt.xlabel("Excluded Cluster")
-    plt.ylabel("Test Cluster")
+    plt.xlabel("Domain")
+    plt.ylabel("Model")
     plt.title("Mean Test Loss Matrix")
     plt.tight_layout()
     plt.savefig(os.path.join(save_path, "mean_test_loss_matrix.png"))
@@ -211,7 +211,7 @@ def main():
 
     # Get dataloaders
     print("Getting dataloaders...")
-    dataloaders = get_dataloaders(
+    dataloaders = get_test_dataloaders(
         input_dir=input_dir,
         target_dir=target_dir,
         elev_dir=dem_dir,
@@ -230,8 +230,9 @@ def main():
     # Test in a leave-one-cluster-out cross-validation fashion
     # Compute mean test loss for each cluster
     mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
-    for i, (excluded_cluster, loaders) in enumerate(dataloaders.items()):
+    for i, (excluded_cluster, _) in enumerate(dataloaders.items()):
         
+        # Load model trained on all but excluded cluster
         print(f"Evaluating model trained on cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
@@ -252,11 +253,9 @@ def main():
         model.to(device)
         model.eval()
 
-        # Evaluate model on the test dataset of the excluded cluster
-        for j, (cluster, loaders) in enumerate(dataloaders.items()):
+        # Evaluate on all clusters
+        for j, (cluster, test_loader) in enumerate(dataloaders.items()):
             
-            # Get cluster test loader
-            test_loader = loaders["test"]
             evaluation_results = evaluate_model(
                 model,
                 criterion,

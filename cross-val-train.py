@@ -6,6 +6,8 @@ import yaml
 import argparse
 import pandas as pd
 import glob
+import numpy as np
+import optuna
 
 from data.dataloader import get_dataloaders
 from src.models import unet
@@ -28,6 +30,12 @@ def main():
     config = "config_local" if args.config == "local" else "config_curnagl"
     resume_exp = args.resume_exp
     print("Using config: ", config)
+
+    # Set random seed for reproducibility
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
 
     # Load local config
     config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
@@ -77,7 +85,7 @@ def main():
     config_path = os.path.join(output_dir, f"config.yaml")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
-        
+
     # Log experiment in experiments.csv: (Time, Model, Path)
     local_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
     if os.path.exists(local_dir):
@@ -104,6 +112,7 @@ def main():
 
     # Load model
     model = getattr(unet, model)()
+    # Move model to device
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
@@ -120,18 +129,46 @@ def main():
         transform=config["training"]["transform"],
     )
 
+    # Optimize hyperparameters
+    for excluded_cluster, loaders in dataloaders.items():
+        print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
+        train_loaders = loaders["train"]
+        val_loaders = loaders["val"]
+        num_epochs = config["optimization"]["num_epochs"]
+        study = optuna.create_study(direction="minimize")
+        study.optimize(lambda trial: train_model(model=model,
+                                                excluding_cluster=excluded_cluster,
+                                                num_epochs=num_epochs,
+                                                train_loader=train_loaders,
+                                                val_loader=val_loaders,
+                                                config=config,
+                                                device=device,
+                                                save_path=output_dir,
+                                                optimize=True,
+                                                trial=trial
+                                                ), n_trials=30)
+        
+        # Update the optimizer_params per cluster
+        if excluded_cluster in config["domain_specific"]:
+            config["domain_specific"][excluded_cluster]["optimizer_params"].update(study.best_params)
+        
+        # Save back to YAML
+        with open(config_path, "w") as f:
+            yaml.dump(config, f, sort_keys=False)
+
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster, loaders in dataloaders.items():
         print(f"Training excluding cluster: {excluded_cluster}")
         train_loaders = loaders["train"]
         val_loaders = loaders["val"]
-    
-        train_model(
+
+        _ = train_model(
             model=model,
             excluding_cluster=excluded_cluster,
+            num_epochs=config["training"]["num_epochs"],
             train_loader=train_loaders,
             val_loader=val_loaders,
-            config=config["training"],
+            config=config,
             device=device,
             save_path=output_dir,
         )

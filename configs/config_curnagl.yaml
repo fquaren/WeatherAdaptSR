@@ -21,18 +21,18 @@ data:
   variable: "T_2M"
 
 training:
-  num_epochs: 40
-  batch_size: 8
-  transform: theta_e  # None, "theta_e" 
+  num_epochs: 50
+  batch_size: 16
+  transform: None # None, "theta_e" 
   num_workers: 1  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
     patience: 10
   criterion: MSELoss
   optimizer: Adam
-  optimizer_params:
-    lr: 0.0005
-    weight_decay: 0.0001
+  # optimizer_params:
+  #   lr: 0.0005
+  #   weight_decay: 0.0001
   scheduler: ReduceLROnPlateau
   scheduler_params:
     mode: "min"
@@ -42,3 +42,56 @@ training:
 
 testing:
   criterion: MSELoss
+
+optimization:
+  num_epochs: 5
+
+domain_specific:
+  cluster_0:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_1:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_2:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_3:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_4:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_5:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_6:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_7:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_8:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_9:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_10:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
+  cluster_11:
+    optimizer_params:
+      lr: 0.0005
+      weight_decay: 0.0001
