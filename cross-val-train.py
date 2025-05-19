@@ -8,10 +8,12 @@ import pandas as pd
 import glob
 import numpy as np
 import optuna
+import gc
+
 
 from data.dataloader import get_dataloaders
 from src.models import unet
-from src.train import train_model
+from src.train import train_model, objective
 
 
 # Generate random experiment ID
@@ -126,35 +128,29 @@ def main():
         variable=variable,
         batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"],
-        transform=config["training"]["transform"],
+        transform=config["training"]["use_theta_e"],
     )
 
-    # Optimize hyperparameters
-    for excluded_cluster, loaders in dataloaders.items():
-        print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
-        train_loaders = loaders["train"]
-        val_loaders = loaders["val"]
-        num_epochs = config["optimization"]["num_epochs"]
-        study = optuna.create_study(direction="minimize")
-        study.optimize(lambda trial: train_model(model=model,
-                                                excluding_cluster=excluded_cluster,
-                                                num_epochs=num_epochs,
-                                                train_loader=train_loaders,
-                                                val_loader=val_loaders,
-                                                config=config,
-                                                device=device,
-                                                save_path=output_dir,
-                                                optimize=True,
-                                                trial=trial
-                                                ), n_trials=30)
-        
-        # Update the optimizer_params per cluster
-        if excluded_cluster in config["domain_specific"]:
-            config["domain_specific"][excluded_cluster]["optimizer_params"].update(study.best_params)
-        
-        # Save back to YAML
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, sort_keys=False)
+    if config["optimization"]["num_epochs"] != 0:
+        # Optimize hyperparameters
+        for excluded_cluster, loaders in dataloaders.items():
+            print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
+            train_loaders = loaders["train"]
+            val_loaders = loaders["val"]
+            num_epochs = config["optimization"]["num_epochs"]
+            study = optuna.create_study(direction="minimize")
+            study.optimize(
+                lambda trial: objective(trial, model, num_epochs, train_loaders, val_loaders, config, device),
+                n_trials=config["optimization"]["num_trials"]
+            )
+            
+            # Update the optimizer_params per cluster
+            if excluded_cluster in config["domain_specific"]:
+                config["domain_specific"][excluded_cluster]["optimizer_params"].update(study.best_params)
+            
+            # Save back to YAML
+            with open(config_path, "w") as f:
+                yaml.dump(config, f, sort_keys=False)
 
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster, loaders in dataloaders.items():
@@ -172,6 +168,15 @@ def main():
             device=device,
             save_path=output_dir,
         )
+
+        # Empty gpu memory
+        print(f"Finished training excluding cluster: {excluded_cluster}")
+        print(f"Emptying GPU memory for cluster: {excluded_cluster}")
+        train_loaders.dataset.unload_from_gpu()
+        val_loaders.dataset.unload_from_gpu()
+        torch.cuda.empty_cache()
+        gc.collect()
+        print(f"GPU memory emptied for cluster: {excluded_cluster}")
 
     return
 

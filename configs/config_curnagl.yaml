@@ -1,6 +1,6 @@
 experiment:
   seed: 0
-  name: "UNet_cross_val" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
+  name: "cross_val_opt" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
   model: UNet8x
@@ -23,7 +23,7 @@ data:
 training:
   num_epochs: 50
   batch_size: 16
-  transform: None # None, "theta_e" 
+  use_theta_e: False
   num_workers: 1  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
@@ -44,41 +44,42 @@ testing:
   criterion: MSELoss
 
 optimization:
-  num_epochs: 5
+  num_epochs: 5 # 0 if not optimizing
+  num_trials: 10
 
 domain_specific:
   cluster_0:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 0.00028617355748081436
+      weight_decay: 0.00412481948349928
   cluster_1:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 5.9471853078098894e-06
+      weight_decay: 0.0001911628174628851
   cluster_2:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 0.00011868678633246034
+      weight_decay: 7.30424604470619e-06
   cluster_3:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 1.3463024723677244e-05
+      weight_decay: 0.0011213009473336052
   cluster_4:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 1.8857515086744534e-05
+      weight_decay: 0.00017834421676328458
   cluster_5:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 6.762585632097431e-05
+      weight_decay: 0.000642023679137236
   cluster_6:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 3.842889419108907e-06
+      weight_decay: 6.6731821002845215e-06
   cluster_7:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 5.140441051767035e-05
+      weight_decay: 3.4855357366568234e-05
   cluster_8:
     optimizer_params:
       lr: 0.0005
@@ -89,9 +90,9 @@ domain_specific:
       weight_decay: 0.0001
   cluster_10:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 2.095066556087775e-05
+      weight_decay: 9.415862727212971e-06
   cluster_11:
     optimizer_params:
-      lr: 0.0005
-      weight_decay: 0.0001
+      lr: 9.202422102362905e-06
+      weight_decay: 0.0009447342927584608

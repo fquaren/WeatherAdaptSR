@@ -167,18 +167,13 @@ class SingleVariableDataset_v2(Dataset):
         input_file = self.input_files[idx]
         target_file = self.target_files[idx]
         A, B, _, _ = self._extract_numbers(input_file)
+        # filename = os.path.basename(input_file)
 
         # Ensure the correct elevation file exists
         if (A, B) not in self.elev_files:
             raise FileNotFoundError(f"No elevation file found for {A}_{B} in {self.elev_dir}")
 
         elev_file = self.elev_files[(A, B)]
-
-        with xr.open_dataset(input_file) as ds:
-            input_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
-
-        with xr.open_dataset(target_file) as ds:
-            target_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
 
         with xr.open_dataset(elev_file) as ds:
             elevation_data = torch.tensor(ds["HSURF"].values, dtype=torch.float32).unsqueeze(0)
@@ -188,12 +183,114 @@ class SingleVariableDataset_v2(Dataset):
             with xr.open_dataset(input_file) as ds:
                 input_RH = torch.tensor(ds["RELHUM_2M"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
                 input_P_surf = torch.tensor(ds["PS"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
-            # Apply transfromation
+                input_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
             input_data = compute_equivalent_potential_temperature(input_data, input_RH, input_P_surf)
             with xr.open_dataset(target_file) as ds:
                 target_RH = torch.tensor(ds["RELHUM_2M"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
                 target_P_surf = torch.tensor(ds["PS"].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
+                target_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
             # Apply transfromation
             target_data = compute_equivalent_potential_temperature(target_data, target_RH, target_P_surf)
+        else:
+            with xr.open_dataset(input_file) as ds:
+                input_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
+            with xr.open_dataset(target_file) as ds:
+                target_data = torch.tensor(ds[self.variable].isel(time=0).values, dtype=torch.float32).unsqueeze(0)
         
-        return input_data, elevation_data, target_data
+        return input_data, elevation_data, target_data #, filename
+
+
+class SingleVariableDataset_v3(Dataset):
+    def __init__(self, data_dir, split='train', transform=None):
+        """
+        Args:
+            data_dir (str): Directory containing the .npy files.
+            split (str): Dataset split prefix, e.g., 'train'.
+            transform (str): Optional transformation identifier, e.g., 'theta_e'.
+        """
+        self.transform = transform
+        self.split = split
+        self.data_dir = data_dir
+
+        # Load input variables
+        self.T_input = np.load(os.path.join(data_dir, f'{split}_T_2M_input.npy'))          # (N, H, W)
+        self.P_input = np.load(os.path.join(data_dir, f'{split}_PS_input.npy'))            # (N, H, W)
+        self.RH_input = np.load(os.path.join(data_dir, f'{split}_RELHUM_2M_input.npy'))    # (N, H, W)
+
+        # Load target variables
+        self.T_target = np.load(os.path.join(data_dir, f'{split}_T_2M_target.npy'))        # (N, H, W)
+        self.P_target = np.load(os.path.join(data_dir, f'{split}_PS_target.npy'))          # (N, H, W)
+        self.RH_target = np.load(os.path.join(data_dir, f'{split}_RELHUM_2M_target.npy'))  # (N, H, W)
+
+        # Elevation
+        self.elevation = np.load(os.path.join(data_dir, f'{split}_HSURF.npy'))             # (N, H, W)
+
+        # Optional metadata
+        self.locations = np.load(os.path.join(data_dir, f'{split}_LOCATION.npy'))
+        self.filenames = np.load(os.path.join(data_dir, f'{split}_FILENAME.npy'))
+
+        self.length = self.T_input.shape[0]
+        for arr in [self.P_input, self.RH_input, self.T_target, self.P_target, self.RH_target, self.elevation]:
+            if arr.shape[0] != self.length:
+                raise ValueError("All variables must have the same number of samples")
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        T_in = torch.tensor(self.T_input[idx], dtype=torch.float32)
+        RH_in = torch.tensor(self.RH_input[idx], dtype=torch.float32)
+        P_in = torch.tensor(self.P_input[idx], dtype=torch.float32)
+
+        T_out = torch.tensor(self.T_target[idx], dtype=torch.float32)
+        RH_out = torch.tensor(self.RH_target[idx], dtype=torch.float32)
+        P_out = torch.tensor(self.P_target[idx], dtype=torch.float32)
+
+        elev = torch.tensor(self.elevation[idx], dtype=torch.float32).unsqueeze(0)
+
+        if self.transform == "theta_e":
+            input_tensor = compute_equivalent_potential_temperature(T_in.unsqueeze(0), RH_in.unsqueeze(0), P_in.unsqueeze(0))
+            target_tensor = compute_equivalent_potential_temperature(T_out.unsqueeze(0), RH_out.unsqueeze(0), P_out.unsqueeze(0))
+        else:
+            input_tensor = T_in.unsqueeze(0)
+            target_tensor = T_out.unsqueeze(0)
+
+        return input_tensor, elev, target_tensor
+
+
+class GPUMemoryDataset(Dataset):
+    def __init__(self, data_dir, split="train", use_theta_e=False, device="cuda"):
+        """
+        Args:
+            data_dir (str): Path to directory with preprocessed .npy files.
+            split (str): Dataset split, e.g., 'train', 'val', 'test'.
+            use_theta_e (bool): Whether to use θₑ instead of T_2M.
+            device (str): Device to load the data to ('cuda' or 'cpu').
+        """
+        suffix = "theta_e" if use_theta_e else "T_2M"
+
+        self.input = torch.tensor(
+            np.load(f"{data_dir}/{split}_{suffix}_input_standardized.npy"),
+            dtype=torch.float32,
+        ).unsqueeze(0).to(device)
+
+        self.elev = torch.tensor(
+            np.load(os.path.join(data_dir, f'{split}_HSURF.npy')),
+            dtype=torch.float32
+        ).unsqueeze(0).to(device)
+
+        self.target = torch.tensor(
+            np.load(f"{data_dir}/{split}_{suffix}_target_standardized.npy"),
+            dtype=torch.float32,
+        ).unsqueeze(0).to(device)
+
+    def __len__(self):
+        return self.input.shape[0]
+    
+    def unload_from_gpu(self):
+        self.input = self.input.to("cpu")
+        self.target = self.target.to("cpu")
+        self.elev = self.elev.to("cpu")
+
+    def __getitem__(self, idx):
+        return self.input[idx], self.elev[idx], self.target[idx]
