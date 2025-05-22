@@ -13,8 +13,8 @@
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --mem 100G
-#SBATCH --time 72:00:00
+#SBATCH --mem 50G
+#SBATCH --time 48:00:00
 
 
 module load singularityce/4.1.0

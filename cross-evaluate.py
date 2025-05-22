@@ -7,7 +7,7 @@ import argparse
 import yaml
 from tqdm import tqdm
 
-from data.dataloader import get_test_dataloaders
+from data.dataloader import get_cluster_dataloader
 from src.models import unet
 
 
@@ -137,7 +137,7 @@ def plot_training_metrics(save_path, evaluation_path, model_architecture, exclud
     plt.close()
 
 
-def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
+def plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, save_path):
     """"
     Plots the mean test loss matrix for all clusters.
     """
@@ -145,10 +145,10 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, save_path):
     fig, ax = plt.subplots(figsize=(10, 8))
     cax = ax.matshow(mean_test_loss_matrix, cmap='coolwarm')
     plt.colorbar(cax)
-    ax.set_xticks(np.arange(len(dataloaders)))
-    ax.set_yticks(np.arange(len(dataloaders)))
-    ax.set_xticklabels(list(dataloaders.keys()))
-    ax.set_yticklabels(list(dataloaders.keys()))
+    ax.set_xticks(np.arange(len(cluster_names)))
+    ax.set_yticks(np.arange(len(cluster_names)))
+    ax.set_xticklabels(cluster_names)
+    ax.set_yticklabels(cluster_names)
     plt.xlabel("Domain")
     plt.ylabel("Model")
     plt.title("Mean Test Loss Matrix")
@@ -198,28 +198,14 @@ def main():
         raise ValueError(f"Model architecture '{model_architecture}' is not callable.")
     # Initialize model
     model = getattr(unet, model_architecture)()
-    
-    # Get dataloaders
-    if args.local is not None:
-        input_dir="/Users/fquareng/data/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
-        target_dir="/Users/fquareng/data/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
-        dem_dir="/Users/fquareng/data/dem_squares"
-    else:
-        input_dir = os.path.join(config["data"]["data_path"], config["data"]["input_path"])
-        target_dir = os.path.join(config["data"]["data_path"], config["data"]["target_path"])
-        dem_dir = os.path.join(config["data"]["data_path"], config["data"]["dem_path"])
 
-    # Get dataloaders
-    print("Getting dataloaders...")
-    dataloaders = get_test_dataloaders(
-        input_dir=input_dir,
-        target_dir=target_dir,
-        elev_dir=dem_dir,
-        variable=config["data"]["variable"],
-        batch_size=config["training"]["batch_size"],
-        num_workers=num_workers,
-        transform=config["training"]["transform"],
-    )
+    # Load data path and cluster names
+    data_path = config["paths"]["data_path"]
+    cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
+    if config["training"]["load_data_on_gpu"]:
+        device_data = "cuda"
+    else:
+        device_data = "cpu"
 
     # Load criterion
     criterion = getattr(torch.nn, config["testing"]["criterion"])()
@@ -229,8 +215,8 @@ def main():
 
     # Test in a leave-one-cluster-out cross-validation fashion
     # Compute mean test loss for each cluster
-    mean_test_loss_matrix = np.zeros((len(dataloaders), len(dataloaders)))
-    for i, (excluded_cluster, _) in enumerate(dataloaders.items()):
+    mean_test_loss_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+    for i, excluded_cluster in enumerate(cluster_names):
         
         # Load model trained on all but excluded cluster
         print(f"Evaluating model trained on cluster: {excluded_cluster}")
@@ -254,8 +240,19 @@ def main():
         model.eval()
 
         # Evaluate on all clusters
-        for j, (cluster, test_loader) in enumerate(dataloaders.items()):
-            
+        for j, cluster in enumerate(cluster_names):
+
+            # Load dataloaders
+            cluster_dataloaders = get_cluster_dataloader(
+                    data_path=config["paths"]["data_path"],
+                    excluded_cluster=excluded_cluster,
+                    batch_size=config["training"]["batch_size"],
+                    num_workers=config["training"]["num_workers"],
+                    use_theta_e=config["training"]["use_theta_e"],
+                    device=device_data,
+                )
+            test_loader = cluster_dataloaders["test"]
+
             evaluation_results = evaluate_model(
                 model,
                 criterion,
@@ -280,9 +277,9 @@ def main():
     # Save mean test loss matrix
     np.savez(os.path.join(save_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
     print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
-    
+
     # Plot mean test loss matrix
-    plot_mean_test_loss_matrix(mean_test_loss_matrix, dataloaders, exp_path)
+    plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, exp_path)
     print("Mean test loss matrix plotted and saved.")
 
 if __name__ == "__main__":

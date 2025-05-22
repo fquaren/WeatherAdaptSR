@@ -1,10 +1,85 @@
-from data.dataset import SingleVariableDataset_v2, SingleVariableDataset_v3, GPUMemoryDataset
-from torch.utils.data import DataLoader
 import os
-import re
-import numpy as np
-from tqdm import tqdm
-import json
+from torch.utils.data import DataLoader
+
+from data.dataset import SingleVariableDataset_v3
+
+
+def get_cluster_dataloader(data_path, excluded_cluster, batch_size=8, num_workers=1, use_theta_e=False, device="cpu"):
+    """
+    Create dataloaders for training and validation datasets.
+    Args:
+        data_path (str): Directory containing input files.
+        batch_size (int): Batch size for dataloaders.
+        num_workers (int): Number of workers for dataloaders.
+        use_theta_e (bool): Whether to use theta_e in the dataset.
+    Returns:
+        dict: Dictionary containing dataloaders for each cluster.
+    """
+
+    # Check if the device is a GPU
+    if device == "cuda":
+        print(f"Loading data on GPU: {device}")
+    else:
+        print(f"Loading data on CPU: {device}")
+
+    # Check if the data path exists
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data path {data_path} does not exist.")
+    
+    print(f"Creating dataloader for {excluded_cluster}...")
+
+    data_dir = os.path.join(data_path, excluded_cluster)
+
+    train_dataset = SingleVariableDataset_v3(data_dir, split='train', use_theta_e=use_theta_e, device=device)
+    val_dataset = SingleVariableDataset_v3(data_dir, split='val', use_theta_e=use_theta_e, device=device)
+    # test_dataset = SingleVariableDataset_v3(data_dir, split='test', use_theta_e=use_theta_e)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    # test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+    print(f"Done.")
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Validation dataset size: {len(val_dataset)}")
+    # print(f"Test dataset size: {len(test_dataset)}")
+
+    return {"train": train_loader, "val": val_loader}  #, "test": test_loader}
+
+
+# def get_dataloaders(data_path, batch_size=8, num_workers=1, use_theta_e=False):
+#     """
+#     Create dataloaders for training and validation datasets.
+#     Args:
+#         data_path (str): Directory containing input files.
+#         batch_size (int): Batch size for dataloaders.
+#         num_workers (int): Number of workers for dataloaders.
+#         use_theta_e (bool): Whether to use theta_e in the dataset.
+#     Returns:
+#         dict: Dictionary containing dataloaders for each cluster.
+#     """
+#     # Check if the data path exists
+#     if not os.path.exists(data_path):
+#         raise FileNotFoundError(f"Data path {data_path} does not exist.")
+    
+#     cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
+#     dataloaders = {}
+
+#     for excluded_cluster in cluster_names:
+#         print(f"Excluding cluster: {excluded_cluster}")
+
+#         data_dir = os.path.join(data_path, excluded_cluster)
+
+#         train_dataset = SingleVariableDataset_v3(data_dir, split='train', use_theta_e=use_theta_e)
+#         val_dataset = SingleVariableDataset_v3(data_dir, split='val', use_theta_e=use_theta_e)
+#         # test_dataset = GPUMemoryDataset(data_dir, split='test', use_theta_e=use_theta_e)
+
+#         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+#         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+#         # test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+#         dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader}  #, "test": test_loader}
+
+#     return dataloaders
 
 
 # def compute_dataset_statistics(dataset, save_path):
@@ -124,38 +199,6 @@ import json
 
 #     return dataloaders
 
-
-def get_dataloaders(data_path, batch_size=8, num_workers=1, use_theta_e=False):
-    """
-    Create dataloaders for training, validation, and testing datasets.
-    Args:
-        input_dir (str): Directory containing input files.
-        target_dir (str): Directory containing target files.
-        elev_dir (str): Directory containing elevation files.
-        variable (str): Variable name to load from the dataset.
-        batch_size (int): Batch size for dataloaders.
-        num_workers (int): Number of workers for dataloaders.
-        transform: Transformations to apply to the data.
-    Returns:
-        dict: Dictionary containing dataloaders for each cluster.
-    """
-    cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
-    dataloaders = {}
-
-    for excluded_cluster in cluster_names:
-        print(f"Excluding cluster: {excluded_cluster}")
-
-        data_dir = os.path.join(data_path, excluded_cluster)
-
-        train_dataset = GPUMemoryDataset(data_dir, split='train', use_theta_e=use_theta_e)
-        val_dataset = GPUMemoryDataset(data_dir, split='val', use_theta_e=use_theta_e)
-
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-
-        dataloaders[excluded_cluster] = {"train": train_loader, "val": val_loader}
-
-    return dataloaders
 
 
 # def get_test_dataloaders(input_dir, target_dir, elev_dir, variable, batch_size=8, num_workers=1, transform=None):

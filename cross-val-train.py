@@ -10,8 +10,7 @@ import numpy as np
 import optuna
 import gc
 
-
-from data.dataloader import get_dataloaders
+from data.dataloader import get_cluster_dataloader
 from src.models import unet
 from src.train import train_model, objective
 
@@ -34,10 +33,10 @@ def main():
     print("Using config: ", config)
 
     # Set random seed for reproducibility
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
+    # random.seed(42)
+    # np.random.seed(42)
+    # torch.manual_seed(42)
+    # torch.cuda.manual_seed(42)
 
     # Load local config
     config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
@@ -52,8 +51,7 @@ def main():
     exp_path = config["experiment"]["save_dir"]
     exp_name = config["experiment"]["name"]
     
-    # Experiment id
-    # Get exp id from argparse
+    # Experiment ID
     if resume_exp is None:
         # Generate a new experiment ID
         exp_id = generate_experiment_id()
@@ -70,7 +68,6 @@ def main():
             return
         print(f"Resuming experiment with ID: {exp_id}")
         
-    # exp_id = generate_experiment_id()
     output_dir = os.path.join(exp_path, exp_name, exp_id)
     print(f"Experiment ID: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
@@ -89,7 +86,7 @@ def main():
         config = yaml.safe_load(file)
 
     # Log experiment in experiments.csv: (Time, Model, Path)
-    local_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
+    local_dir = config["paths"]["local_dir"]
     if os.path.exists(local_dir):
         if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
             with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
@@ -98,21 +95,7 @@ def main():
             # Append a line to the csv file
             file.write(f"{time},{model},{output_dir}\n")
 
-    # Get data paths
-    data_path = config["data"]["data_path"]
-    input_path = config["data"]["input_path"]
-    target_path = config["data"]["target_path"]
-    variable = config["data"]["variable"]
-    dem_path = config["data"]["dem_path"] 
-
-    input_dir = os.path.join(data_path, input_path)
-    assert os.path.exists(input_dir), f"Inputs directory {input_dir} does not exist."
-    target_dir = os.path.join(data_path, target_path)
-    assert os.path.exists(target_dir), f"Targets directory {target_dir} does not exist."
-    dem_dir = os.path.join(data_path, dem_path)
-    assert os.path.exists(dem_dir), f"DEM directory {dem_dir} does not exist."
-
-    # Load model
+    # Load model on device (multi-GPU if available)
     model = getattr(unet, model)()
     # Move model to device
     if torch.cuda.device_count() > 1:
@@ -120,27 +103,32 @@ def main():
         model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
     model.to(device)
 
-    # Load data 
-    dataloaders = get_dataloaders(
-        input_dir=input_dir,
-        target_dir=target_dir,
-        elev_dir=dem_dir,
-        variable=variable,
-        batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"],
-        transform=config["training"]["use_theta_e"],
-    )
+    # Load data
+    data_path = config["paths"]["data_path"]
+    cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
+    if config["training"]["load_data_on_gpu"]:
+        device_data = "cuda"
+    else:
+        device_data = "cpu"
 
+    # Optimize hyperparameters
     if config["optimization"]["num_epochs"] != 0:
-        # Optimize hyperparameters
-        for excluded_cluster, loaders in dataloaders.items():
+        for excluded_cluster in cluster_names:
             print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
-            train_loaders = loaders["train"]
-            val_loaders = loaders["val"]
+            cluster_dataloaders = get_cluster_dataloader(
+                data_path=config["paths"]["data_path"],
+                excluded_cluster=excluded_cluster,
+                batch_size=config["training"]["batch_size"],
+                num_workers=config["training"]["num_workers"],
+                use_theta_e=config["training"]["use_theta_e"],
+                device=device_data,
+            )
+            train_loader = cluster_dataloaders["train"]
+            val_loader = cluster_dataloaders["val"]
             num_epochs = config["optimization"]["num_epochs"]
             study = optuna.create_study(direction="minimize")
             study.optimize(
-                lambda trial: objective(trial, model, num_epochs, train_loaders, val_loaders, config, device),
+                lambda trial: objective(trial, model, num_epochs, train_loader, val_loader, config, device),
                 n_trials=config["optimization"]["num_trials"]
             )
             
@@ -153,17 +141,25 @@ def main():
                 yaml.dump(config, f, sort_keys=False)
 
     # Train in a leave-one-cluster-out cross-validation fashion
-    for excluded_cluster, loaders in dataloaders.items():
+    for excluded_cluster in cluster_names:
         print(f"Training excluding cluster: {excluded_cluster}")
-        train_loaders = loaders["train"]
-        val_loaders = loaders["val"]
+        cluster_dataloaders = get_cluster_dataloader(
+            data_path=config["paths"]["data_path"],
+            excluded_cluster=excluded_cluster,
+            batch_size=config["training"]["batch_size"],
+            num_workers=config["training"]["num_workers"],
+            use_theta_e=config["training"]["use_theta_e"],
+            device=device_data,
+        )
+        train_loader = cluster_dataloaders["train"]
+        val_loader = cluster_dataloaders["val"]
 
         _ = train_model(
             model=model,
             excluding_cluster=excluded_cluster,
             num_epochs=config["training"]["num_epochs"],
-            train_loader=train_loaders,
-            val_loader=val_loaders,
+            train_loader=train_loader,
+            val_loader=val_loader,
             config=config,
             device=device,
             save_path=output_dir,
@@ -172,11 +168,13 @@ def main():
         # Empty gpu memory
         print(f"Finished training excluding cluster: {excluded_cluster}")
         print(f"Emptying GPU memory for cluster: {excluded_cluster}")
-        train_loaders.dataset.unload_from_gpu()
-        val_loaders.dataset.unload_from_gpu()
+        cluster_dataloaders["train"].dataset.unload_from_gpu()
+        cluster_dataloaders["val"].dataset.unload_from_gpu()
+        train_loader.dataset.unload_from_gpu()
+        val_loader.dataset.unload_from_gpu()
         torch.cuda.empty_cache()
         gc.collect()
-        print(f"GPU memory emptied for cluster: {excluded_cluster}")
+        # print(f"GPU memory emptied for cluster: {excluded_cluster}")
 
     return
 

@@ -3,27 +3,28 @@ experiment:
   name: "cross_val_opt" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
-  model: UNet8x
-  # UNet8x
-  # UNet8x_BN
-  # UNet8x_DO
-  # UNet8x_DO_BN
-  # UNet8x_Noise
-  # UNet8x_Noise_DO_BN
-  # UNet8x_Noise_Trainable_DO_BN
-  # UNet8x_HighRes_Noise_Trainable_DO_BN
+  model: UNet
+  # UNet
+  # UNet_BN
+  # UNet_DO
+  # UNet_DO_BN
+  # UNet_Noise
+  # UNet_Noise_DO_BN
+  # UNet_Trainable_Noise
 
-data:
-  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data"
-  input_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
-  target_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
-  dem_path: "dem_squares"
-  variable: "T_2M"
+paths:
+  local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
+  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters"
+  # input_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
+  # target_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
+  # dem_path: "dem_squares"
+  # variable: "T_2M"
 
 training:
   num_epochs: 50
   batch_size: 16
   use_theta_e: False
+  load_data_on_gpu: False
   num_workers: 1  # change to 1 if training on curnagl
   early_stopping: True
   early_stopping_params:
@@ -44,42 +45,42 @@ testing:
   criterion: MSELoss
 
 optimization:
-  num_epochs: 5 # 0 if not optimizing
+  num_epochs: 5  # 0 if not optimizing
   num_trials: 10
 
 domain_specific:
   cluster_0:
     optimizer_params:
-      lr: 0.00028617355748081436
-      weight_decay: 0.00412481948349928
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_1:
     optimizer_params:
-      lr: 5.9471853078098894e-06
-      weight_decay: 0.0001911628174628851
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_2:
     optimizer_params:
-      lr: 0.00011868678633246034
-      weight_decay: 7.30424604470619e-06
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_3:
     optimizer_params:
-      lr: 1.3463024723677244e-05
-      weight_decay: 0.0011213009473336052
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_4:
     optimizer_params:
-      lr: 1.8857515086744534e-05
-      weight_decay: 0.00017834421676328458
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_5:
     optimizer_params:
-      lr: 6.762585632097431e-05
-      weight_decay: 0.000642023679137236
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_6:
     optimizer_params:
-      lr: 3.842889419108907e-06
-      weight_decay: 6.6731821002845215e-06
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_7:
     optimizer_params:
-      lr: 5.140441051767035e-05
-      weight_decay: 3.4855357366568234e-05
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_8:
     optimizer_params:
       lr: 0.0005
@@ -90,9 +91,9 @@ domain_specific:
       weight_decay: 0.0001
   cluster_10:
     optimizer_params:
-      lr: 2.095066556087775e-05
-      weight_decay: 9.415862727212971e-06
+      lr: 0.0005
+      weight_decay: 0.0001
   cluster_11:
     optimizer_params:
-      lr: 9.202422102362905e-06
-      weight_decay: 0.0009447342927584608
+      lr: 0.0005
+      weight_decay: 0.0001

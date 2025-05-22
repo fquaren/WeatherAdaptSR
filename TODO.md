@@ -1,7 +1,9 @@
 # To do list
 
-- [ ] Preprocessing
+- [ ] Add preprocessing scripts to repo
+- [ ] Make repo future proof
 - [ ] Add filenames to evaluation script (output of Dataset and Dataloader)
+- [x] Interpolation and fix UNet
 
 - [ ] Training
   - [ ] Baseline on all clusters

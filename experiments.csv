@@ -49,3 +49,11 @@ Time,Model,Path
 2025-05-12 18:30:40.478352,UNet8x,/scratch/fquareng/experiments/UNet_cross_val/xaji
 2025-05-13 09:28:58.450943,UNet8x,/scratch/fquareng/experiments/adaptive_cross_val/xaji
 2025-05-14 08:53:30.153168,UNet8x,/scratch/fquareng/experiments/adaptive_cross_val/xaji
+2025-05-21 06:57:33.385208,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 06:59:25.539163,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:06:48.010441,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:10:33.679572,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:12:19.599511,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:18:12.657209,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:19:40.683143,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
+2025-05-21 07:25:25.915475,UNet8x,/scratch/fquareng/experiments/cross_val_opt/xaji
