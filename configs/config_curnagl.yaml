@@ -1,6 +1,5 @@
 experiment:
-  seed: 0
-  name: "cross_val_opt" #"UNet_baseline_v2" # "training_on_individual_clusters" #"UNet-8x-baseline-T2M", "finetuning"
+  name: "cross_val_opt"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"
   model: UNet
@@ -15,10 +14,6 @@ experiment:
 paths:
   local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
   data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters"
-  # input_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
-  # target_path: "DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
-  # dem_path: "dem_squares"
-  # variable: "T_2M"
 
 training:
   num_epochs: 50

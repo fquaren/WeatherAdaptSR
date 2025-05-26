@@ -10,7 +10,7 @@ import numpy as np
 import optuna
 import gc
 
-from data.dataloader import get_cluster_dataloader
+from data.dataloader import get_clusters_dataloader
 from src.models import unet
 from src.train import train_model, objective
 
@@ -115,7 +115,7 @@ def main():
     if config["optimization"]["num_epochs"] != 0:
         for excluded_cluster in cluster_names:
             print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
-            cluster_dataloaders = get_cluster_dataloader(
+            cluster_dataloaders = get_clusters_dataloader(
                 data_path=config["paths"]["data_path"],
                 excluded_cluster=excluded_cluster,
                 batch_size=config["training"]["batch_size"],
@@ -140,14 +140,14 @@ def main():
             with open(config_path, "w") as f:
                 yaml.dump(config, f, sort_keys=False)
 
-    # Load config file for experiment
+    # Load config file for experiment # TODO: check if this is needed
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster in cluster_names:
         print(f"Training excluding cluster: {excluded_cluster}")
-        cluster_dataloaders = get_cluster_dataloader(
+        cluster_dataloaders = get_clusters_dataloader(
             data_path=config["paths"]["data_path"],
             excluded_cluster=excluded_cluster,
             batch_size=config["training"]["batch_size"],
@@ -178,7 +178,7 @@ def main():
         val_loader.dataset.unload_from_gpu()
         torch.cuda.empty_cache()
         gc.collect()
-        # print(f"GPU memory emptied for cluster: {excluded_cluster}")
+        print(f"GPU memory emptied for cluster: {excluded_cluster}")
 
     return
 

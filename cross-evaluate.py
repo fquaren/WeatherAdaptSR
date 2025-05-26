@@ -7,7 +7,7 @@ import argparse
 import yaml
 from tqdm import tqdm
 
-from data.dataloader import get_cluster_dataloader
+from data.dataloader import get_clusters_dataloader
 from src.models import unet
 
 
@@ -243,7 +243,7 @@ def main():
         for j, cluster in enumerate(cluster_names):
 
             # Load dataloaders
-            cluster_dataloaders = get_cluster_dataloader(
+            cluster_dataloaders = get_clusters_dataloader(
                     data_path=config["paths"]["data_path"],
                     excluded_cluster=cluster,
                     batch_size=config["training"]["batch_size"],
