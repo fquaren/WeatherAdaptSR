@@ -140,6 +140,10 @@ def main():
             with open(config_path, "w") as f:
                 yaml.dump(config, f, sort_keys=False)
 
+    # Load config file for experiment
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster in cluster_names:
         print(f"Training excluding cluster: {excluded_cluster}")

@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name eval_vmu4
+#SBATCH --job-name eval_UNet
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -13,8 +13,8 @@
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --mem 10G
-#SBATCH --time 02:00:00
+#SBATCH --mem 50G
+#SBATCH --time 01:00:00
 
 
 module load singularityce/4.1.0
@@ -24,7 +24,7 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
-micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "/scratch/fquareng/experiments/UNet_cross_val/vmu4"
+micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "/scratch/fquareng/experiments/cross_val_opt/21zo"
 
 # Evaluate all experiments in the folder
 # base_path=/scratch/fquareng/experiments/UNet_experiments_12

@@ -123,8 +123,8 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
 
 def plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster):
     # Plot training metrics
-    train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
-    val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
+    train_losses = np.load(os.path.join(save_path, "batch_train_losses.npy"))
+    val_losses = np.load(os.path.join(save_path, "batch_val_losses.npy"))
     _ = plt.figure()
     plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
     plt.plot(train_losses, label="Train Loss")
@@ -245,7 +245,7 @@ def main():
             # Load dataloaders
             cluster_dataloaders = get_cluster_dataloader(
                     data_path=config["paths"]["data_path"],
-                    excluded_cluster=excluded_cluster,
+                    excluded_cluster=cluster,
                     batch_size=config["training"]["batch_size"],
                     num_workers=config["training"]["num_workers"],
                     use_theta_e=config["training"]["use_theta_e"],

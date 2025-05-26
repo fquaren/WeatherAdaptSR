@@ -24,4 +24,8 @@ singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-
 source /users/fquareng/.bashrc
 micromamba activate dl
 
+# Run the training script
 micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
+# Read experiement path from experiment.csv file and run cross-evaluation
+exp_path=$(tail -n 1 /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/experiment.csv | awk -F, '{print $NF}')
+micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"

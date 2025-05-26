@@ -32,18 +32,18 @@ def get_cluster_dataloader(data_path, excluded_cluster, batch_size=8, num_worker
 
     train_dataset = SingleVariableDataset_v3(data_dir, split='train', use_theta_e=use_theta_e, device=device)
     val_dataset = SingleVariableDataset_v3(data_dir, split='val', use_theta_e=use_theta_e, device=device)
-    # test_dataset = SingleVariableDataset_v3(data_dir, split='test', use_theta_e=use_theta_e)
+    test_dataset = SingleVariableDataset_v3(data_dir, split='test', use_theta_e=use_theta_e)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-    # test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     print(f"Done.")
     print(f"Train dataset size: {len(train_dataset)}")
     print(f"Validation dataset size: {len(val_dataset)}")
-    # print(f"Test dataset size: {len(test_dataset)}")
+    print(f"Test dataset size: {len(test_dataset)}")
 
-    return {"train": train_loader, "val": val_loader}  #, "test": test_loader}
+    return {"train": train_loader, "val": val_loader, "test": test_loader}
 
 
 # def get_dataloaders(data_path, batch_size=8, num_workers=1, use_theta_e=False):
