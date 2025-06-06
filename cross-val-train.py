@@ -9,6 +9,7 @@ import glob
 import numpy as np
 import optuna
 import gc
+import time
 
 from data.dataloader import get_clusters_dataloader
 from src.models import unet
@@ -105,7 +106,11 @@ def main():
 
     # Load data
     data_path = config["paths"]["data_path"]
-    cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
+    # Choose clusters to train on for parallelization of training
+    cluster_names = config["paths"]["clusters"]
+    if cluster_names is None:
+        print("No cluster names provided. Loading all clusters from data path.")
+        cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
     if config["training"]["load_data_on_gpu"]:
         device_data = "cuda"
     else:
@@ -113,51 +118,54 @@ def main():
 
     # Optimize hyperparameters
     if config["optimization"]["num_epochs"] != 0:
-        for excluded_cluster in cluster_names:
-            print(f"Optimizing for training with excluding cluster: {excluded_cluster}")
-            cluster_dataloaders = get_clusters_dataloader(
-                data_path=config["paths"]["data_path"],
-                excluded_cluster=excluded_cluster,
-                batch_size=config["training"]["batch_size"],
-                num_workers=config["training"]["num_workers"],
-                use_theta_e=config["training"]["use_theta_e"],
-                device=device_data,
-            )
-            train_loader = cluster_dataloaders["train"]
-            val_loader = cluster_dataloaders["val"]
-            num_epochs = config["optimization"]["num_epochs"]
-            study = optuna.create_study(direction="minimize")
-            study.optimize(
-                lambda trial: objective(trial, model, num_epochs, train_loader, val_loader, config, device),
-                n_trials=config["optimization"]["num_trials"]
-            )
-            
+        # Note: Only optimize excluding the first cluster (assumption: it is representative)
+        print(f"Optimizing for training ...")
+        cluster_dataloaders = get_clusters_dataloader(
+            data_path=config["paths"]["data_path"],
+            elev_dir=config["paths"]["elev_path"],
+            excluded_cluster="cluster_0",  # Assuming the first cluster is representative
+            batch_size=config["training"]["batch_size"],
+            num_workers=config["training"]["num_workers"],
+            use_theta_e=config["training"]["use_theta_e"],
+            device=device_data,
+            config=config,
+        )
+        train_loader = cluster_dataloaders["train"]
+        val_loader = cluster_dataloaders["val"]
+        num_epochs = config["optimization"]["num_epochs"]
+        study = optuna.create_study(direction="minimize")
+        study.optimize(
+            lambda trial: objective(trial, model, num_epochs, train_loader, val_loader, config, device),
+            n_trials=config["optimization"]["num_trials"]
+        )
+        
+        for cluster in cluster_names:
             # Update the optimizer_params per cluster
-            if excluded_cluster in config["domain_specific"]:
-                config["domain_specific"][excluded_cluster]["optimizer_params"].update(study.best_params)
-            
+            if cluster in config["domain_specific"]:
+                config["domain_specific"][cluster]["optimizer_params"].update(study.best_params)
             # Save back to YAML
             with open(config_path, "w") as f:
                 yaml.dump(config, f, sort_keys=False)
 
-    # Load config file for experiment # TODO: check if this is needed
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
+        # Load config file for experiment # TODO: check if this is needed
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file)
 
     # Train in a leave-one-cluster-out cross-validation fashion
     for excluded_cluster in cluster_names:
         print(f"Training excluding cluster: {excluded_cluster}")
         cluster_dataloaders = get_clusters_dataloader(
             data_path=config["paths"]["data_path"],
+            elev_dir=config["paths"]["elev_path"],
             excluded_cluster=excluded_cluster,
             batch_size=config["training"]["batch_size"],
             num_workers=config["training"]["num_workers"],
             use_theta_e=config["training"]["use_theta_e"],
             device=device_data,
+            config=config,
         )
         train_loader = cluster_dataloaders["train"]
         val_loader = cluster_dataloaders["val"]
-
         _ = train_model(
             model=model,
             excluding_cluster=excluded_cluster,
@@ -168,17 +176,29 @@ def main():
             device=device,
             save_path=output_dir,
         )
-
         # Empty gpu memory
         print(f"Finished training excluding cluster: {excluded_cluster}")
         print(f"Emptying GPU memory for cluster: {excluded_cluster}")
-        cluster_dataloaders["train"].dataset.unload_from_gpu()
-        cluster_dataloaders["val"].dataset.unload_from_gpu()
-        train_loader.dataset.unload_from_gpu()
-        val_loader.dataset.unload_from_gpu()
+        # Check memory usage
+        for dataset in cluster_dataloaders["train"].dataset.datasets:
+            dataset.unload_from_gpu()
+        for dataset in cluster_dataloaders["val"].dataset.datasets:
+            dataset.unload_from_gpu()
+        for dataset in cluster_dataloaders["test"].dataset.datasets:
+            dataset.unload_from_gpu()
+        del train_loader, val_loader, cluster_dataloaders, model
         torch.cuda.empty_cache()
         gc.collect()
         print(f"GPU memory emptied for cluster: {excluded_cluster}")
+
+        # Reset model to initial state for next training
+        print(f"Model reset for next training ...")
+        model = getattr(unet, model)()
+        if torch.cuda.device_count() > 1:
+            print(f"Using {torch.cuda.device_count()} GPUs!")
+            model = torch.nn.DataParallel(model)
+        model.to(device)
+        print("Done. Continuing to next cluster ...")
 
     return
 

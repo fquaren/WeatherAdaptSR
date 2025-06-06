@@ -14,37 +14,36 @@ def objective(trial, model, num_epochs, train_loader, val_loader, config, device
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
     criterion = getattr(torch.nn, config["training"]["criterion"])()
 
-    train_batch_losses, val_batch_losses = [], []
     for n in range(num_epochs):
-        _, val_loss, _, _ = _train_step(
+        _, val_loss = _train_step(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
             optimizer=optimizer,
             scheduler=scheduler,
             criterion=criterion,
-            device=device,
-            train_batch_losses=train_batch_losses, 
-            val_batch_losses=val_batch_losses
+            device=device
         )
 
     return val_loss
 
 
 # Train and val step
-def _train_step(model, train_loader, val_loader, optimizer, scheduler, criterion, device, train_batch_losses, val_batch_losses):
+def _train_step(model, train_loader, val_loader, optimizer, scheduler, criterion, device):
 
     # Training step
     train_loss = 0.0
     for temperature, elevation, target in tqdm(train_loader):
-        temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+        temperature = temperature.to(device)
+        elevation = elevation.to(device)
+        target = target.to(device)
         optimizer.zero_grad()
         output = model(temperature, elevation)
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
-        train_batch_losses.append(loss.item())
+        del output, loss  # Free memory
     
     train_loss /= len(train_loader)
     
@@ -56,12 +55,13 @@ def _train_step(model, train_loader, val_loader, optimizer, scheduler, criterion
             temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
             output = model(temperature, elevation)
             val_loss += criterion(output, target).item()
-            val_batch_losses.append(criterion(output, target).item())
-    
+
     val_loss /= len(val_loader)
     scheduler.step(val_loss)
 
-    return train_loss, val_loss, train_batch_losses, val_batch_losses 
+    torch.cuda.empty_cache()
+
+    return train_loss, val_loss
 
 
 # Train loop
@@ -73,7 +73,6 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
 
     patience = config["training"]["early_stopping_params"]["patience"]
 
-    train_batch_losses, val_batch_losses = [], []
     train_losses, val_losses = [], []
     early_stop_counter = 0
 
@@ -108,10 +107,8 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
     for epoch in tqdm(range(num_epochs)):
 
         model.train()
-        
         epoch_start_time = time.time()
-        
-        train_loss, val_loss, train_batch_losses, val_batch_losses = _train_step(
+        train_loss, val_loss = _train_step(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
@@ -119,9 +116,9 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
             scheduler=scheduler,
             criterion=criterion,
             device=device,
-            train_batch_losses=train_batch_losses,
-            val_batch_losses=val_batch_losses
         )
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
 
         # Save only the latest best model snapshot
         if val_loss < best_val_loss:
@@ -151,14 +148,25 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
         # Early Stopping
         if config["training"]["early_stopping"] and early_stop_counter >= patience:
             print("Early stopping triggered.")
+            # Save the last model state
+            last_snapshot_path = os.path.join(cluster_dir, f"last_snapshot.pth")
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": train_loss,
+                "val_loss": val_loss
+            }, last_snapshot_path)
+            print(f"Last model state saved to {last_snapshot_path}")
             break
+
+        torch.cuda.empty_cache()
 
     print("Training complete! Best model saved as:", snapshot_path)
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
-    np.save(os.path.join(cluster_dir, "train_batch_losses.npy"), np.array(train_batch_losses))
     np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
-    np.save(os.path.join(cluster_dir, "val_batch_losses.npy"), np.array(val_batch_losses))
 
     return best_val_loss

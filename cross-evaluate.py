@@ -6,8 +6,9 @@ import os
 import argparse
 import yaml
 from tqdm import tqdm
+import gc
 
-from data.dataloader import get_clusters_dataloader
+from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
 from src.models import unet
 
 
@@ -123,8 +124,8 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
 
 def plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster):
     # Plot training metrics
-    train_losses = np.load(os.path.join(save_path, "batch_train_losses.npy"))
-    val_losses = np.load(os.path.join(save_path, "batch_val_losses.npy"))
+    train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
+    val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
     _ = plt.figure()
     plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
     plt.plot(train_losses, label="Train Loss")
@@ -173,6 +174,9 @@ def main():
     
     # Load config file
     config_path = os.path.join(exp_path, "config.yaml")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file {config_path} does not exist. Please provide a valid path.")
+    print("Loading config from: ", config_path)
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
@@ -235,7 +239,6 @@ def main():
         else:
             raise FileNotFoundError(f"Snapshot file {snapshot_path} does not exist.")
         
-        # Set model to evaluation mode
         model.to(device)
         model.eval()
 
@@ -243,15 +246,17 @@ def main():
         for j, cluster in enumerate(cluster_names):
 
             # Load dataloaders
-            cluster_dataloaders = get_clusters_dataloader(
-                    data_path=config["paths"]["data_path"],
-                    excluded_cluster=cluster,
-                    batch_size=config["training"]["batch_size"],
-                    num_workers=config["training"]["num_workers"],
-                    use_theta_e=config["training"]["use_theta_e"],
-                    device=device_data,
-                )
-            test_loader = cluster_dataloaders["test"]
+            cluster_dataloader = get_single_cluster_dataloader(
+                data_path=config["paths"]["data_path"],
+                elev_dir=config["paths"]["elev_path"],
+                cluster=cluster,
+                batch_size=config["training"]["batch_size"],
+                num_workers=config["training"]["num_workers"],
+                use_theta_e=config["training"]["use_theta_e"],
+                device=device_data,
+                config=config,
+            )
+            test_loader = cluster_dataloader["test"]
 
             evaluation_results = evaluate_model(
                 model,
@@ -272,8 +277,18 @@ def main():
                 evaluation_path,
                 save=True
             )
+
             # Compute mean test loss
             mean_test_loss_matrix[i, j] = np.mean(evaluation_results["test_losses"])
+
+            # Free up memory
+            cluster_dataloader["train"].dataset.unload_from_gpu()            
+            cluster_dataloader["val"].dataset.unload_from_gpu()
+            cluster_dataloader["test"].dataset.unload_from_gpu()
+            del test_loader, cluster_dataloader
+            torch.cuda.empty_cache()
+            gc.collect()
+
     # Save mean test loss matrix
     np.savez(os.path.join(save_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
     print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))

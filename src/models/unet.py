@@ -40,7 +40,7 @@ class UNet(nn.Module):
     def forward(self, variable, elevation):  
         # Check input resolution
         assert variable.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
+            f"Inputs must be same shape, got {variable.shape[2:]} and {elevation.shape[2:]}"
         
         # Concatenate input channels
         x = torch.cat((variable, elevation), dim=1)  # Shape: [B, 2, 128, 128]
