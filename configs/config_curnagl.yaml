@@ -55,55 +55,67 @@ testing:
   criterion: MSELoss
 
 optimization:
-  num_epochs: 10  # 0 if not optimizing
+  num_epochs: 5  # 0 if not optimizing, 10 if optimizing
   num_trials: 5
 
 domain_specific:
   cluster_0:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_1:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_2:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_3:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_4:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_5:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_6:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_7:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_8:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_9:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_10:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16
   cluster_11:
     optimizer_params:
-      lr: 1.2920070421713929e-06
-      weight_decay: 2.471000170907895e-05
+      lr: 3.224280188805708e-05
+      weight_decay: 5.0245053055189817e-05
+      batch_size: 16

@@ -3,16 +3,33 @@ import os
 import numpy as np
 import time
 from tqdm import tqdm
+import gc
+
+from data.dataloader import get_clusters_dataloader
 
 
-def objective(trial, model, num_epochs, train_loader, val_loader, config, device):
+def objective(trial, model, num_epochs, cluster, config, device, device_data):
     # Hyperparameter optimization
     lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+    batch_size = trial.suggest_int("batch_size", 8, 128, step=8)
 
     optimizer = getattr(torch.optim, config["training"]["optimizer"])(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
     criterion = getattr(torch.nn, config["training"]["criterion"])()
+
+    cluster_dataloaders = get_clusters_dataloader(
+        data_path=config["paths"]["data_path"],
+        elev_dir=config["paths"]["elev_path"],
+        excluded_cluster=cluster,
+        batch_size=batch_size,
+        num_workers=config["training"]["num_workers"],
+        use_theta_e=config["training"]["use_theta_e"],
+        device=device_data,
+        config=config,
+    )
+    train_loader = cluster_dataloaders["train"]
+    val_loader = cluster_dataloaders["val"]
 
     for n in range(num_epochs):
         _, val_loss = _train_step(
@@ -24,6 +41,21 @@ def objective(trial, model, num_epochs, train_loader, val_loader, config, device
             criterion=criterion,
             device=device
         )
+
+    # Empty gpu memory
+    print(f"Finished optimizing on cluster_0.")
+    print(f"Emptying GPU memory ...")
+    for dataset in cluster_dataloaders["train"].dataset.datasets:
+        dataset.unload_from_gpu()
+    for dataset in cluster_dataloaders["val"].dataset.datasets:
+        dataset.unload_from_gpu()
+    for dataset in cluster_dataloaders["test"].dataset.datasets:
+        dataset.unload_from_gpu()
+    del train_loader, val_loader, cluster_dataloaders, model
+    torch.cuda.empty_cache()
+    gc.collect()
+    print(f"GPU memory emptied ...")
+    print("Hyperparameter optimization completed. Proceeding to training ...")
 
     return val_loss
 

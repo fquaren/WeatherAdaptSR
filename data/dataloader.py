@@ -81,11 +81,9 @@ def get_clusters_dataloader(data_path, elev_dir, excluded_cluster, batch_size=8,
             continue
         else:
             data_dir = os.path.join(data_path, cluster)
-
             train_dataset = SingleVariableDataset_v6(data_dir, elev_dir, split="train", use_theta_e=use_theta_e, device=device)
             val_dataset = SingleVariableDataset_v6(data_dir, elev_dir, split='val', use_theta_e=use_theta_e, device=device)
             test_dataset = SingleVariableDataset_v6(data_dir, elev_dir, split='test', use_theta_e=use_theta_e, device=device)
-
             train_clusters.append(train_dataset)
             val_clusters.append(val_dataset)
             test_clusters.append(test_dataset)
@@ -93,7 +91,6 @@ def get_clusters_dataloader(data_path, elev_dir, excluded_cluster, batch_size=8,
     train_dataset = ConcatDataset(train_clusters)
     val_dataset = ConcatDataset(val_clusters)
     test_dataset = ConcatDataset(test_clusters)
-
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)

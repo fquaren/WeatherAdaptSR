@@ -266,8 +266,8 @@ def main():
             )
 
             # Save evaluation results
-            # np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
-            # print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
+            np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
+            print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
 
             # Plot results
             plot_results(
