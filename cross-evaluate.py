@@ -165,7 +165,10 @@ def main():
     parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
     parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
     parser.add_argument("--num_workers", type=int, default=None, help="Number of workers (optional)")
-    args = parser.parse_args()    
+    parser.add_argument("--save_eval", default=False, help="Save evaluation results to disk")
+    args = parser.parse_args()
+
+    save_eval = args.save_eval
     
     exp_path = args.exp_path
     if exp_path is None:
@@ -266,8 +269,9 @@ def main():
             )
 
             # Save evaluation results
-            np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
-            print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
+            if save_eval:
+                np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
+                print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
 
             # Plot results
             plot_results(

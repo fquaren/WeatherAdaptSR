@@ -43,7 +43,6 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data):
         )
 
     # Empty gpu memory
-    print(f"Finished optimizing on cluster_0.")
     print(f"Emptying GPU memory ...")
     for dataset in cluster_dataloaders["train"].dataset.datasets:
         dataset.unload_from_gpu()
@@ -55,7 +54,6 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data):
     torch.cuda.empty_cache()
     gc.collect()
     print(f"GPU memory emptied ...")
-    print("Hyperparameter optimization completed. Proceeding to training ...")
 
     return val_loss
 
