@@ -32,9 +32,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="curnagl", help="Local or curnagl config")
     parser.add_argument("--resume_exp", type=str, default=None, help="Local or curnagl config")
+    parser.add_argument("--model", type=str, default=None, help="Model name")
     args = parser.parse_args()
     config = "config_local" if args.config == "local" else "config_curnagl"
     resume_exp = args.resume_exp
+    model_name = args.model
     print("Using config: ", config)
 
     # Load local config
@@ -43,7 +45,7 @@ def main():
         config = yaml.safe_load(file)
     
     device = config["experiment"]["device"]
-    model_name = config["experiment"]["model"]
+    # model_name = config["experiment"]["model"]
     exp_path = config["experiment"]["save_dir"]
     exp_name = config["experiment"]["name"]
     
@@ -103,6 +105,9 @@ def main():
             # Load model on device (multi-GPU if available)
             print(f"Loading model: {model_name} ...")
             model = getattr(unet, model_name)()
+            if model is None:
+                print(f"Model {model_name} not found in unet module. Please check the model name.")
+                return
             if torch.cuda.device_count() > 1:
                 print(f"Using {torch.cuda.device_count()} GPUs!")
                 model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
@@ -112,18 +117,6 @@ def main():
             model.to(device)
 
             print(f"Optimizing model excluding {cluster} for training ...")
-            # cluster_dataloaders = get_clusters_dataloader(
-            #     data_path=config["paths"]["data_path"],
-            #     elev_dir=config["paths"]["elev_path"],
-            #     excluded_cluster="cluster_0",  # Assuming the first cluster is representative
-            #     batch_size=config["training"]["batch_size"],
-            #     num_workers=config["training"]["num_workers"],
-            #     use_theta_e=config["training"]["use_theta_e"],
-            #     device=device_data,s
-            #     config=config,
-            # )
-            # train_loader = cluster_dataloaders["train"]
-            # val_loader = cluster_dataloaders["val"]
             num_epochs = config["optimization"]["num_epochs"]
             study = optuna.create_study(direction="minimize")
             study.optimize(
@@ -209,7 +202,7 @@ def main():
         yaml.dump(config, file)
         file.write(f"EXPERIMENT_ELAPSED_TIME: {pd.Timestamp.now() - start_time}\n")
 
-    return
+    return output_dir
 
 if __name__ == "__main__":
     main()

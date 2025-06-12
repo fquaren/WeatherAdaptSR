@@ -165,7 +165,7 @@ class UNet_DO(nn.Module):
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
         
-    def conv_block(self, in_channels, out_channels, dropout_prob):
+    def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -236,7 +236,7 @@ class UNet_DO_BN(nn.Module):
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
         
-    def conv_block(self, in_channels, out_channels, dropout_prob):
+    def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
@@ -389,7 +389,7 @@ class UNet_Noise_DO_BN(nn.Module):
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
         
-    def conv_block(self, in_channels, out_channels, dropout_prob):
+    def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),

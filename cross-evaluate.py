@@ -170,19 +170,21 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, save_path):
     consistency = 1/(N*(N-1))*np.sum(np.array(sum_differences))
 
     print(f"Mean diagonal MSE: {mean_diagonal}")
+    print(f"Mean non-diagonal MSE: {np.mean(np.delete(mean_test_loss_matrix, np.diag_indices(N)))}")
+    print(f"Mean overall MSE: {np.mean(mean_test_loss_matrix)}")
     print(f"Consistency metric: {consistency}")
 
     # Plot mean test loss matrix
     fig, ax = plt.subplots(figsize=(10, 8))
-    cax = ax.matshow(mean_test_loss_matrix, cmap='coolwarm')
+    cax = ax.matshow(mean_test_loss_matrix, cmap='viridis', vmin=0, vmax=np.max(mean_test_loss_matrix))
     plt.colorbar(cax)
-    ax.set_xticks(np.arange(len(cluster_names)))
-    ax.set_yticks(np.arange(len(cluster_names)))
-    ax.set_xticklabels(cluster_names)
+    ax.set_xticks(np.arange(N))
+    ax.set_yticks(np.arange(N))
+    ax.set_xticklabels(cluster_names, rotation=45)
     ax.set_yticklabels(cluster_names)
     plt.xlabel("Domain")
     plt.ylabel("Model")
-    plt.title("Mean Test Loss Matrix. MSE: {:.4f}, Consistency: {:.4f}".format(mean_diagonal, consistency))
+    plt.title(f"Mean Diagonal MSE: {mean_diagonal:.4f}, Mean Non-Diagonal MSE: {np.mean(np.delete(mean_test_loss_matrix, np.diag_indices(N)))}, \nMean Test Loss Matrix. MSE: {np.mean(mean_test_loss_matrix):.4f}, Consistency: {consistency:.4f}")
     plt.tight_layout()
     plt.savefig(os.path.join(save_path, "mean_test_loss_matrix.png"))
     plt.close(fig)  # Close the figure to free memory
@@ -192,6 +194,7 @@ def main():
     # Get model path from arg command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cpu", help="Device to use for evaluation (cpu or cuda)")
+    parser.add_argument("--model", type=str, default=None, help="Model architecture to use for evaluation")
     parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
     parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
     parser.add_argument("--num_workers", type=int, default=None, help="Number of workers (optional)")
@@ -226,7 +229,8 @@ def main():
     print("Device: ", device)
     
     # Load model architecture from config
-    model_architecture = config["experiment"]["model"]
+    model_architecture = args.model
+    # model_architecture = config["experiment"]["model"]
     # Check if model_architecture is a valid attribute of the unet module
     if not hasattr(unet, model_architecture):
         raise ValueError(f"Model architecture '{model_architecture}' not found in unet.py module.")

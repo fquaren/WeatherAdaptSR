@@ -199,4 +199,22 @@ Time,Model,Path
 2025-06-11 14:47:44.485246,UNet,/scratch/fquareng/experiments/debugging/0kxh
 2025-06-11 15:01:21.547909,UNet,/scratch/fquareng/experiments/cross-val-v3/l832
 2025-06-11 16:20:21.747907,UNet,/scratch/fquareng/experiments/cross-val-v3/s23r
-2025-06-12 08:38:44.368762,UNet_BN,/scratch/fquareng/experiments/cross-val-v4/8sqq
+2025-06-12 08:38:44.368762,UNet_BN,/scratch/fquareng/experiments/cross-val-v4/8sqq2025-06-12 14:37:09.819950,UNet,/scratch/fquareng/experiments/cross-val-v5/ac8e
+2025-06-12 14:37:09.821736,UNet_DO_BN,/scratch/fquareng/experiments/cross-val-v5/fd3o
+2025-06-12 14:37:09.820995,UNet_Noise,/scratch/fquareng/experiments/cross-val-v5/heba
+2025-06-12 14:37:09.846255,UNet_Noise_DO_BN,/scratch/fquareng/experiments/cross-val-v5/hcv2
+2025-06-12 14:37:09.821376,UNet_BN,/scratch/fquareng/experiments/cross-val-v5/3ny4
+2025-06-12 14:37:09.820380,UNet_DO,/scratch/fquareng/experiments/cross-val-v5/5it3
+2025-06-12 14:40:25.456276,UNet,/scratch/fquareng/experiments/debugging/nv4m
+2025-06-12 14:43:41.123422,UNet_BN,/scratch/fquareng/experiments/debugging/6gnu
+2025-06-12 14:43:41.174090,UNet_DO_BN,/scratch/fquareng/experiments/debugging/nvvl
+2025-06-12 14:43:41.175742,UNet_Noise_DO_BN,/scratch/fquareng/experiments/debugging/x3h0
+2025-06-12 14:43:41.174875,UNet,/scratch/fquareng/experiments/debugging/he8v
+2025-06-12 14:43:41.204345,UNet_Noise,/scratch/fquareng/experiments/debugging/59do
+2025-06-12 14:43:41.223534,UNet_DO,/scratch/fquareng/experiments/debugging/yfzi
+2025-06-12 14:45:43.008671,UNet_BN,/scratch/fquareng/experiments/debugging/ulgs
+2025-06-12 14:45:43.009043,UNet_Noise_DO_BN,/scratch/fquareng/experiments/debugging/20ji
+2025-06-12 14:45:43.010175,UNet_Noise,/scratch/fquareng/experiments/debugging/uvxy
+2025-06-12 14:45:43.027752,UNet,/scratch/fquareng/experiments/debugging/hz2y
+2025-06-12 14:45:43.026787,UNet_DO_BN,/scratch/fquareng/experiments/debugging/kge2
+2025-06-12 14:45:43.050446,UNet_DO,/scratch/fquareng/experiments/debugging/40vx

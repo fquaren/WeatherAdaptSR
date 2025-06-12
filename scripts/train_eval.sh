@@ -20,6 +20,17 @@ export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-singularity exec --nv $container_path python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
-exp_path=$(tail -n 1 /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/experiments.csv | awk -F, '{print $NF}')
-singularity exec --nv $container_path python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
+models=("UNet" "UNet_DO" "UNet_BN" "UNet_DO_BN" "UNet_Noise" "UNet_Noise_DO_BN")
+
+for model in "${models[@]}"; do
+    (
+        exp_path=$(singularity exec --nv "$container_path" python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py --model "$model")
+        
+        # Optional: Add logging or checks
+        echo "Model: $model, Experiment path: $exp_path"
+
+        singularity exec --nv "$container_path" python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
+    ) &
+done
+
+wait
