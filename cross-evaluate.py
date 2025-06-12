@@ -142,6 +142,36 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, save_path):
     """"
     Plots the mean test loss matrix for all clusters.
     """
+    assert mean_test_loss_matrix.shape[0] == mean_test_loss_matrix.shape[1], "Matrix must be square"
+    N = mean_test_loss_matrix.shape[0]
+
+    arr = mean_test_loss_matrix.copy()
+    cols_to_move = arr[:, [2, 3]].copy()
+    mean_test_loss_matrix[:, 2:9] = mean_test_loss_matrix[:, 4:11]
+    mean_test_loss_matrix[:, 9:11] = cols_to_move
+
+    rows_to_move = mean_test_loss_matrix[[2, 3], :].copy()
+    mean_test_loss_matrix[2:9, :] = mean_test_loss_matrix[4:11, :]
+    mean_test_loss_matrix[9:11, :] = rows_to_move
+    
+    # 1. Compute the mean of the diagonal (same cluster train-test)
+    mean_diagonal = np.mean(np.diag(mean_test_loss_matrix))
+
+    # 2. Compute the mean difference for each column
+    sum_differences = []
+    for i in range(mean_test_loss_matrix.shape[1]):
+        column_values = mean_test_loss_matrix[:, i]
+        diff = column_values - column_values[i]  # Difference from the diagonal value
+        diff = np.maximum(diff, 0)               # Apply relu to difference to avoid negative values
+        sum_diff = np.sum(np.delete(diff, i))    # Exclude the diagonal element
+        sum_differences.append(sum_diff)
+
+    # Convert to a NumPy array for easy handling
+    consistency = 1/(N*(N-1))*np.sum(np.array(sum_differences))
+
+    print(f"Mean diagonal MSE: {mean_diagonal}")
+    print(f"Consistency metric: {consistency}")
+
     # Plot mean test loss matrix
     fig, ax = plt.subplots(figsize=(10, 8))
     cax = ax.matshow(mean_test_loss_matrix, cmap='coolwarm')
@@ -152,7 +182,7 @@ def plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, save_path):
     ax.set_yticklabels(cluster_names)
     plt.xlabel("Domain")
     plt.ylabel("Model")
-    plt.title("Mean Test Loss Matrix")
+    plt.title("Mean Test Loss Matrix. MSE: {:.4f}, Consistency: {:.4f}".format(mean_diagonal, consistency))
     plt.tight_layout()
     plt.savefig(os.path.join(save_path, "mean_test_loss_matrix.png"))
     plt.close(fig)  # Close the figure to free memory
@@ -293,11 +323,8 @@ def main():
             torch.cuda.empty_cache()
             gc.collect()
 
-    # Save mean test loss matrix
-    np.savez(os.path.join(save_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
+    np.savez(os.path.join(exp_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
     print("Mean test loss matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
-
-    # Plot mean test loss matrix
     plot_mean_test_loss_matrix(mean_test_loss_matrix, cluster_names, exp_path)
     print("Mean test loss matrix plotted and saved.")
 

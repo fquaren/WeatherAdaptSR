@@ -12,7 +12,6 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data):
     # Hyperparameter optimization
     lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
-    batch_size = trial.suggest_int("batch_size", 8, 128, step=8)
 
     optimizer = getattr(torch.optim, config["training"]["optimizer"])(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
@@ -22,7 +21,7 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data):
         data_path=config["paths"]["data_path"],
         elev_dir=config["paths"]["elev_path"],
         excluded_cluster=cluster,
-        batch_size=batch_size,
+        batch_size=config["training"]["batch_size"],
         num_workers=config["training"]["num_workers"],
         use_theta_e=config["training"]["use_theta_e"],
         device=device_data,
@@ -72,7 +71,7 @@ def _train_step(model, train_loader, val_loader, optimizer, scheduler, criterion
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-        train_loss += loss.item()
+        train_loss += loss.detach().item()
         del output, loss  # Free memory
     
     train_loss /= len(train_loader)
@@ -84,7 +83,7 @@ def _train_step(model, train_loader, val_loader, optimizer, scheduler, criterion
         for temperature, elevation, target in val_loader:
             temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
             output = model(temperature, elevation)
-            val_loss += criterion(output, target).item()
+            val_loss += criterion(output, target).detach().item()
 
     val_loss /= len(val_loader)
     scheduler.step(val_loss)

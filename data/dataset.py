@@ -22,7 +22,7 @@ class SingleVariableDataset_v6(Dataset):
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         # Load full input & target into GPU
-        input_path = os.path.join(data_dir, f"{split}_{self.suffix}_input_bicubic.npy")
+        input_path = os.path.join(data_dir, f"{split}_{self.suffix}_input_normalized_interp8x_bicubic.npy")
         target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target_normalized.npy")
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
 

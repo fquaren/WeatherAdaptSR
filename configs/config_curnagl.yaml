@@ -1,5 +1,5 @@
 experiment:
-  name: "cross-val-v3" # "cross-val-v3", "debugging"
+  name: "cross-val-v5" # "cross-val-v3", "debugging"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
   model: UNet
@@ -13,7 +13,7 @@ experiment:
 
 paths:
   local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
-  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters"
+  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/new_clusters"
   elev_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"
   clusters: [
     "cluster_0",
@@ -31,8 +31,8 @@ paths:
   ]
 
 training:
-  num_epochs: 25
-  batch_size: 16
+  num_epochs: 100
+  batch_size: 32
   use_theta_e: False
   load_data_on_gpu: True
   num_workers: 0  # 0 if on GH200
@@ -49,73 +49,60 @@ training:
     mode: "min"
     factor: 0.5
     patience: 5
-    verbose: True
 
 testing:
   criterion: MSELoss
 
 optimization:
-  num_epochs: 5  # 0 if not optimizing, 10 if optimizing
-  num_trials: 5
+  num_epochs: 10  # 0 if not optimizing, 10 if optimizing
+  num_trials: 10
 
 domain_specific:
   cluster_0:
     optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
+      lr: 0.00010103784632843117
+      weight_decay: 2.7081903354200482e-06
   cluster_1:
     optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_2:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_3:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_4:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_5:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_6:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_7:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_8:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
-  cluster_9:
-    optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
+      lr: 1.741162886898334e-06
+      weight_decay: 1.357048098375383e-06
   cluster_10:
     optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
+      lr: 0.00012393557885107537
+      weight_decay: 1.183175858041721e-05
   cluster_11:
     optimizer_params:
-      lr: 3.224280188805708e-05
-      weight_decay: 5.0245053055189817e-05
-      batch_size: 16
+      lr: 6.929905784207916e-05
+      weight_decay: 2.5955438444608163e-05
+  cluster_2:
+    optimizer_params:
+      lr: 7.2939581804924195e-06
+      weight_decay: 1.0129210796743568e-05
+  cluster_3:
+    optimizer_params:
+      lr: 1.0752183855103428e-06
+      weight_decay: 7.984340926334343e-05
+  cluster_4:
+    optimizer_params:
+      lr: 6.516305481847179e-06
+      weight_decay: 1.0818494064318493e-05
+  cluster_5:
+    optimizer_params:
+      lr: 2.032703875649766e-05
+      weight_decay: 3.2284575168535546e-05
+  cluster_6:
+    optimizer_params:
+      lr: 4.951768649864631e-06
+      weight_decay: 7.849846187099783e-06
+  cluster_7:
+    optimizer_params:
+      lr: 1.5245527478222927e-05
+      weight_decay: 0.00017318314906004183
+  cluster_8:
+    optimizer_params:
+      lr: 3.60232484808421e-06
+      weight_decay: 4.580783173280096e-06
+  cluster_9:
+    optimizer_params:
+      lr: 4.580079928910211e-06
+      weight_decay: 0.00012448253031874595

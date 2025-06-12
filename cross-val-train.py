@@ -24,6 +24,10 @@ def generate_experiment_id(length=4):
 # Launch experiment
 def main():
 
+    print("Starting cross-validation training ...")
+    start_time = pd.Timestamp.now()
+    print("Time: ", start_time)
+
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="curnagl", help="Local or curnagl config")
@@ -62,11 +66,10 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Save config experiment
-    time = str(pd.Timestamp.now()) 
     with open(os.path.join(output_dir, "config.yaml"), "w") as file:
         yaml.dump(config, file)
-        file.write(f"EXPERIENT_ID: {exp_id}\n")
-        file.write(f"EXPERIMENT_DATE: {time}\n")
+        file.write(f"EXPERIMENT_ID: {exp_id}\n")
+        file.write(f"EXPERIMENT_START_TIME: {start_time}\n")
 
     # Use saved config file for experiment
     config_path = os.path.join(output_dir, f"config.yaml")
@@ -81,7 +84,7 @@ def main():
                 file.write("Time,Model,Path\n")
         with open(os.path.join(local_dir, "experiments.csv"), "a") as file:
             # Append a line to the csv file
-            file.write(f"{time},{model_name},{output_dir}\n")
+            file.write(f"{start_time},{model_name},{output_dir}\n")
 
     # Load data
     data_path = config["paths"]["data_path"]
@@ -108,7 +111,7 @@ def main():
             print(f"Moving model to device: {device} ...")
             model.to(device)
 
-            print(f"Optimizing cluster {cluster} for training ...")
+            print(f"Optimizing model excluding {cluster} for training ...")
             # cluster_dataloaders = get_clusters_dataloader(
             #     data_path=config["paths"]["data_path"],
             #     elev_dir=config["paths"]["elev_path"],
@@ -133,8 +136,8 @@ def main():
                 config["domain_specific"][cluster]["optimizer_params"].update(study.best_params)
             with open(config_path, "w") as f:
                 yaml.dump(config, f, sort_keys=False)
-        else:
-            print("Skipping hyperparameter optimization as num_epochs is set to 0.")
+    else:
+        print("Skipping hyperparameter optimization as num_epochs is set to 0.")
 
     # Load config file for experiment
     with open(config_path, "r") as file:
@@ -161,7 +164,7 @@ def main():
             data_path=config["paths"]["data_path"],
             elev_dir=config["paths"]["elev_path"],
             excluded_cluster=excluded_cluster,
-            batch_size=config["domain_specific"][cluster]["batch_size"],
+            batch_size=config["training"]["batch_size"],
             num_workers=config["training"]["num_workers"],
             use_theta_e=config["training"]["use_theta_e"],
             device=device_data,
@@ -199,6 +202,12 @@ def main():
 
     print("All clusters trained. Experiment completed.")
     print(f"Experiment saved at: {output_dir}")
+    print("Elapsed time: ", pd.Timestamp.now() - start_time)
+
+    # Save config experiment
+    with open(os.path.join(output_dir, "config.yaml"), "w") as file:
+        yaml.dump(config, file)
+        file.write(f"EXPERIMENT_ELAPSED_TIME: {pd.Timestamp.now() - start_time}\n")
 
     return
 

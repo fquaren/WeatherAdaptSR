@@ -16,16 +16,10 @@
 #SBATCH --mem 100G
 #SBATCH --time 72:00:00
 
+export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
-#module load singularityce/4.1.0
-#export SINGULARITY_BINDPATH="/scratch,/dcsrsoft,/users,/work,/reference"
-#singularity run --nv /dcsrsoft/singularity/containers/pytorch/pytorch-ngc-24.05-2.4.sif
+container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-source /users/fquareng/.bashrc
-# micromamba activate dl
-
-python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
-# micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
+singularity exec --nv $container_path python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py
 exp_path=$(tail -n 1 /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/experiments.csv | awk -F, '{print $NF}')
-# micromamba run -n dl python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
-python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
+singularity exec --nv $container_path python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
