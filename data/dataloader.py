@@ -1,8 +1,6 @@
 import os
-import numpy as np
-import torch
 from torch.utils.data import ConcatDataset, DataLoader
-from data.dataset import SingleVariableDataset_v3, SingleVariableDataset_v4, SingleVariableDataset_v5, SingleVariableDataset_v6
+from data.dataset import SingleVariableDataset_v6
 
 
 def get_single_cluster_dataloader(data_path, elev_dir, cluster, batch_size=8, num_workers=1, use_theta_e=False, device="cpu"):

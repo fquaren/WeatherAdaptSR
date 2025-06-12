@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import numpy as np
 from matplotlib import pyplot as plt
 import os
@@ -8,7 +7,7 @@ import yaml
 from tqdm import tqdm
 import gc
 
-from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
+from data.dataloader import get_single_cluster_dataloader
 from src.models import unet
 
 

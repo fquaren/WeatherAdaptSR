@@ -1,5 +1,5 @@
 experiment:
-  name: "debugging" # "cross-val-v5", "debugging"
+  name: "cross-val-v5" # "cross-val-v5", "debugging"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
   # model: UNet
