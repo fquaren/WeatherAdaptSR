@@ -8,7 +8,7 @@ import gc
 from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
 
 
-def objective(trial, model, num_epochs, cluster, config, device, device_data, optimize_single_cluster=False):
+def objective(trial, model, num_epochs, cluster, cluster_names, config, device, device_data, optimize_single_cluster=False):
     # Hyperparameter optimization
     lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
@@ -33,7 +33,8 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data, op
         cluster_dataloaders = get_clusters_dataloader(
             data_path=config["paths"]["data_path"],
             elev_dir=config["paths"]["elev_path"],
-            cluster=cluster,
+            excluded_cluster=cluster,
+            cluster_names=cluster_names,
             batch_size=config["training"]["batch_size"],
             num_workers=config["training"]["num_workers"],
             use_theta_e=config["training"]["use_theta_e"],

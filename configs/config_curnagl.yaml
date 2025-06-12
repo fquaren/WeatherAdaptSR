@@ -31,7 +31,7 @@ paths:
   ]
 
 training:
-  num_epochs: 1 #100
+  num_epochs: 100
   batch_size: 32
   use_theta_e: False
   load_data_on_gpu: True
@@ -54,8 +54,8 @@ testing:
   criterion: MSELoss
 
 optimization:
-  num_epochs: 1 # 10  # 0 if not optimizing, 10 if optimizing
-  num_trials: 1 # 10
+  num_epochs: 10  # 0 if not optimizing, 10 if optimizing
+  num_trials: 10
 
 domain_specific:
   cluster_0:

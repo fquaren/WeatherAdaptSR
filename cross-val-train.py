@@ -6,10 +6,8 @@ import yaml
 import argparse
 import pandas as pd
 import glob
-import numpy as np
 import optuna
 import gc
-import time
 
 from data.dataloader import get_clusters_dataloader
 from src.models import unet
@@ -120,7 +118,7 @@ def main():
             num_epochs = config["optimization"]["num_epochs"]
             study = optuna.create_study(direction="minimize")
             study.optimize(
-                lambda trial: objective(trial, model, num_epochs, cluster, config, device, device_data),
+                lambda trial: objective(trial, model, num_epochs, cluster, cluster_names, config, device, device_data),
                 n_trials=config["optimization"]["num_trials"]
             )
 
