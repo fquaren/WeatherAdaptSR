@@ -5,7 +5,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 from data.dataset import SingleVariableDataset_v3, SingleVariableDataset_v4, SingleVariableDataset_v5, SingleVariableDataset_v6
 
 
-def get_single_cluster_dataloader(data_path, elev_dir, cluster, batch_size=8, num_workers=1, use_theta_e=False, device="cpu", config=None):
+def get_single_cluster_dataloader(data_path, elev_dir, cluster, batch_size=8, num_workers=1, use_theta_e=False, device="cpu"):
     """
     Create dataloaders for training and validation datasets.
     Args:
@@ -50,7 +50,7 @@ def get_single_cluster_dataloader(data_path, elev_dir, cluster, batch_size=8, nu
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
 
-def get_clusters_dataloader(data_path, elev_dir, excluded_cluster, batch_size=8, num_workers=1, use_theta_e=False, device="cpu", config=None):
+def get_clusters_dataloader(data_path, elev_dir, excluded_cluster, cluster_names, batch_size=8, num_workers=1, use_theta_e=False, device="cpu"):
     """
     Create dataloaders for training and validation datasets.
     Args:
@@ -75,8 +75,8 @@ def get_clusters_dataloader(data_path, elev_dir, excluded_cluster, batch_size=8,
     print(f"Creating dataloader from all clusters except {excluded_cluster} ...")
 
     train_clusters, val_clusters, test_clusters = [], [], []
-    
-    for cluster in config["paths"]["clusters"]:  # sorted(os.listdir(data_path)):
+
+    for cluster in cluster_names:  # sorted(os.listdir(data_path)):
         if cluster == excluded_cluster:
             continue
         else:

@@ -291,7 +291,6 @@ def main():
                 num_workers=config["training"]["num_workers"],
                 use_theta_e=config["training"]["use_theta_e"],
                 device=device_data,
-                config=config,
             )
             test_loader = cluster_dataloader["test"]
 

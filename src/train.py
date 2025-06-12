@@ -5,10 +5,10 @@ import time
 from tqdm import tqdm
 import gc
 
-from data.dataloader import get_clusters_dataloader
+from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
 
 
-def objective(trial, model, num_epochs, cluster, config, device, device_data):
+def objective(trial, model, num_epochs, cluster, config, device, device_data, optimize_single_cluster=False):
     # Hyperparameter optimization
     lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
@@ -16,19 +16,31 @@ def objective(trial, model, num_epochs, cluster, config, device, device_data):
     optimizer = getattr(torch.optim, config["training"]["optimizer"])(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
     criterion = getattr(torch.nn, config["training"]["criterion"])()
-
-    cluster_dataloaders = get_clusters_dataloader(
-        data_path=config["paths"]["data_path"],
-        elev_dir=config["paths"]["elev_path"],
-        excluded_cluster=cluster,
-        batch_size=config["training"]["batch_size"],
-        num_workers=config["training"]["num_workers"],
-        use_theta_e=config["training"]["use_theta_e"],
-        device=device_data,
-        config=config,
-    )
-    train_loader = cluster_dataloaders["train"]
-    val_loader = cluster_dataloaders["val"]
+    
+    if optimize_single_cluster:
+        cluster_dataloaders = get_single_cluster_dataloader(
+            data_path=config["paths"]["data_path"],
+            elev_dir=config["paths"]["elev_path"],
+            cluster=cluster,
+            batch_size=config["training"]["batch_size"],
+            num_workers=config["training"]["num_workers"],
+            use_theta_e=config["training"]["use_theta_e"],
+            device=device_data,
+        )
+        train_loader = cluster_dataloaders["train"]
+        val_loader = cluster_dataloaders["val"]
+    else:
+        cluster_dataloaders = get_clusters_dataloader(
+            data_path=config["paths"]["data_path"],
+            elev_dir=config["paths"]["elev_path"],
+            cluster=cluster,
+            batch_size=config["training"]["batch_size"],
+            num_workers=config["training"]["num_workers"],
+            use_theta_e=config["training"]["use_theta_e"],
+            device=device_data,
+        )
+        train_loader = cluster_dataloaders["train"]
+        val_loader = cluster_dataloaders["val"]
 
     for n in range(num_epochs):
         _, val_loss = _train_step(

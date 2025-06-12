@@ -218,3 +218,8 @@ Time,Model,Path
 2025-06-12 14:45:43.027752,UNet,/scratch/fquareng/experiments/debugging/hz2y
 2025-06-12 14:45:43.026787,UNet_DO_BN,/scratch/fquareng/experiments/debugging/kge2
 2025-06-12 14:45:43.050446,UNet_DO,/scratch/fquareng/experiments/debugging/40vx
+2025-06-12 15:27:06.583671,UNet_Noise,/scratch/fquareng/experiments/debugging/g324
+2025-06-12 15:27:06.592705,UNet,/scratch/fquareng/experiments/debugging/0koo
+2025-06-12 15:27:06.585031,UNet_DO_BN,/scratch/fquareng/experiments/debugging/ccge
+2025-06-12 15:27:06.584593,UNet_BN,/scratch/fquareng/experiments/debugging/v6xn
+2025-06-12 15:27:06.600720,UNet_DO,/scratch/fquareng/experiments/debugging/01by

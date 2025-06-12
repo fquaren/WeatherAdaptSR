@@ -20,17 +20,14 @@ export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet" "UNet_DO" "UNet_BN" "UNet_DO_BN" "UNet_Noise" "UNet_Noise_DO_BN")
-
+# Train and evaluate different models in parallel
+models=("UNet" "UNet_DO" "UNet_BN" "UNet_DO_BN" "UNet_Noise")
+# models=("UNet_Noise_DO_BN" "UNet_Trainable_Noise")
+# models=("UNet_MMD" "UNet_MDAN")
 for model in "${models[@]}"; do
     (
         exp_path=$(singularity exec --nv "$container_path" python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py --model "$model")
-        
-        # Optional: Add logging or checks
-        echo "Model: $model, Experiment path: $exp_path"
-
         singularity exec --nv "$container_path" python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py --device "cuda" --exp_path "$exp_path"
     ) &
 done
-
 wait

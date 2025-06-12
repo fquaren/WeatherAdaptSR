@@ -131,16 +131,13 @@ def main():
                 yaml.dump(config, f, sort_keys=False)
     else:
         print("Skipping hyperparameter optimization as num_epochs is set to 0.")
-
     # Load config file for experiment
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
-
-    # If method=vanilla
-
-    # Train in a leave-one-cluster-out cross-validation fashion
+    
+    # Train on all clusters in cross-validation fashion
+    print("Training on all clusters in cross-validation fashion.")
     for excluded_cluster in cluster_names:
-        
         # Load model on device (multi-GPU if available)
         print(f"Loading model: {model_name} ...")
         model = getattr(unet, model_name)()
@@ -151,20 +148,21 @@ def main():
             print("Using single GPU or CPU.")
         print(f"Moving model to device: {device} ...")
         model.to(device)
-        
+        # Get dataloaders for all clusters excluding the current one
         print(f"Training excluding cluster: {excluded_cluster}")
         cluster_dataloaders = get_clusters_dataloader(
             data_path=config["paths"]["data_path"],
             elev_dir=config["paths"]["elev_path"],
             excluded_cluster=excluded_cluster,
+            cluster_names=cluster_names,
             batch_size=config["training"]["batch_size"],
             num_workers=config["training"]["num_workers"],
             use_theta_e=config["training"]["use_theta_e"],
             device=device_data,
-            config=config,
         )
         train_loader = cluster_dataloaders["train"]
         val_loader = cluster_dataloaders["val"]
+        # Train model
         _ = train_model(
             model=model,
             excluding_cluster=excluded_cluster,
