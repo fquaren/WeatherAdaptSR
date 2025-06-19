@@ -1,5 +1,5 @@
 experiment:
-  name: "cross-val-75" # "cross-val-75", "debugging"
+  name: "all" # "cross-val-75", "debugging"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
   # model: UNet
@@ -31,8 +31,8 @@ paths:
   ]
 
 training:
-  num_epochs: 75
-  batch_size: 32
+  num_epochs: 100
+  batch_size: 64
   use_theta_e: False
   load_data_on_gpu: True
   num_workers: 0  # 0 if on GH200

@@ -513,3 +513,122 @@ class UNet_Trainable_Noise(nn.Module):
         d1 = self.decoder1(d1)
         
         return self.output(d1)
+
+
+# ---------------------------------------------------------- MMD
+
+def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
+    """
+    Computes the Maximum Mean Discrepancy (MMD) between source and target features.
+    
+    Args:
+        source_features: Tensor of shape (N, D) from the source domain.
+        target_features: Tensor of shape (M, D) from the target domain.
+        kernel: Kernel type ('rbf' or 'linear').
+        sigma: Bandwidth for the RBF kernel (if None, it is estimated using median heuristic).
+        
+    Returns:
+        MMD loss (scalar)
+    """
+    
+    def rbf_kernel(X, Y, sigma):
+        XX = torch.sum(X**2, dim=1, keepdim=True)  # (N, 1)
+        YY = torch.sum(Y**2, dim=1, keepdim=True)  # (M, 1)
+        XY = torch.matmul(X, Y.t())  # (N, M)
+        dists = torch.clamp(XX - 2 * XY + YY.t(), min=0.0)  # Squared L2 distance
+        return torch.exp(-dists / (2 * sigma ** 2))  # RBF kernel
+
+    # Normalize features to prevent large magnitude issues
+    source_features = source_features / (source_features.norm(dim=1, keepdim=True) + 1e-6)
+    target_features = target_features / (target_features.norm(dim=1, keepdim=True) + 1e-6)
+
+    # Compute adaptive sigma if not provided
+    if sigma is None:
+        pairwise_dists = torch.norm(source_features[:, None] - target_features, dim=2, p=2)
+        sigma = torch.median(pairwise_dists).detach().item()
+        sigma = max(sigma, 1e-3)  # Avoid very small sigma
+
+    # Compute kernel matrices
+    if kernel == 'rbf':
+        K_ss = rbf_kernel(source_features, source_features, sigma)
+        K_tt = rbf_kernel(target_features, target_features, sigma)
+        K_st = rbf_kernel(source_features, target_features, sigma)
+    elif kernel == 'linear':
+        K_ss = torch.matmul(source_features, source_features.t())
+        K_tt = torch.matmul(target_features, target_features.t())
+        K_st = torch.matmul(source_features, target_features.t())
+    else:
+        raise ValueError("Invalid kernel type. Choose 'rbf' or 'linear'.")
+
+    # Compute normalized MMD loss
+    mmd_loss = K_ss.mean() + K_tt.mean() - 2 * K_st.mean()
+
+    return mmd_loss
+
+class UNet_MMD(nn.Module):
+    def __init__(self):
+        super(UNet_MMD, self).__init__()
+        
+        # Encoder
+        self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation
+        self.pool = nn.MaxPool2d(2)
+        self.encoder2 = self.conv_block(64, 128)
+        self.encoder3 = self.conv_block(128, 256)
+
+        # Bottleneck
+        self.bottleneck = self.conv_block(256, 512)
+
+        # Decoder
+        self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.decoder3 = self.conv_block(512, 256)
+        self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.decoder2 = self.conv_block(256, 128)
+        self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.decoder1 = self.conv_block(128, 64)
+
+        self.output = nn.Conv2d(64, 1, kernel_size=1)
+
+    def conv_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, variable, elevation, target_variable=None, target_elevation=None):
+        assert variable.shape[2:] == elevation.shape[2:] == (128, 128)
+
+        # Concatenate source input
+        x = torch.cat((variable, elevation), dim=1)  # [B, 2, 128, 128]
+        e1 = self.encoder1(x)
+        p1 = self.pool(e1)
+        e2 = self.encoder2(p1)
+        p2 = self.pool(e2)
+        e3 = self.encoder3(p2)
+        p3 = self.pool(e3)
+        b = self.bottleneck(p3)
+
+        # Optional: Compute MMD loss from encoder3 outputs
+        mmd_loss = 0
+        if target_variable is not None and target_elevation is not None:
+            target_x = torch.cat((target_variable, target_elevation), dim=1)
+            te1 = self.encoder1(target_x)
+            tp1 = self.pool(te1)
+            te2 = self.encoder2(tp1)
+            tp2 = self.pool(te2)
+            te3 = self.encoder3(tp2)
+            mmd_loss = compute_mmd(e3.flatten(1), te3.flatten(1))
+
+        # Decoder
+        d3 = self.upconv3(b)
+        d3 = torch.cat((d3, e3), dim=1)
+        d3 = self.decoder3(d3)
+        d2 = self.upconv2(d3)
+        d2 = torch.cat((d2, e2), dim=1)
+        d2 = self.decoder2(d2)
+        d1 = self.upconv1(d2)
+        d1 = torch.cat((d1, e1), dim=1)
+        d1 = self.decoder1(d1)
+
+        return self.output(d1), mmd_loss

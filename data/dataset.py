@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 import gc
 
+
 class SingleVariableDataset_v6(Dataset):
     def __init__(self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda"):
         """
