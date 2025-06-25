@@ -177,7 +177,8 @@ def interpolate_temperature_data(input_dir, split="train", var="T_2M", method="b
         A numpy file with interpolated data in the same directory.
     """
 
-    input_fname = f"{split}_{var}_input_normalized.npy"
+    # input_fname = f"{split}_{var}_input_normalized.npy"
+    input_fname = f"{split}_{var}_input.npy"
     input_fpath = os.path.join(input_dir, input_fname)
 
     if not os.path.exists(input_fpath):
@@ -199,7 +200,8 @@ def interpolate_temperature_data(input_dir, split="train", var="T_2M", method="b
         for sample in data
     ])
 
-    out_fname = f"{split}_{var}_input_normalized_interp{scale_factor}x_{method}.npy"
+    # out_fname = f"{split}_{var}_input_normalized_interp{scale_factor}x_{method}.npy"
+    out_fname = f"{split}_{var}_input_interp{scale_factor}x_{method}.npy"
     out_path = os.path.join(input_dir, out_fname)
 
     np.save(out_path, upscaled_data)
@@ -230,30 +232,30 @@ def main():
         cluster_norm_dir = os.path.join(normalized_root, cluster_name)
         os.makedirs(cluster_norm_dir, exist_ok=True)
 
-        train_stats_path = os.path.join(cluster_norm_dir, "train_scaling_metadata.json")
-        preprocess_and_save(
-            input_dir=cluster_raw_dir,
-            output_dir=cluster_norm_dir,
-            split="train"
-        )
+        # train_stats_path = os.path.join(cluster_norm_dir, "train_scaling_metadata.json")
+        # preprocess_and_save(
+        #     input_dir=cluster_raw_dir,
+        #     output_dir=cluster_norm_dir,
+        #     split="train"
+        # )
 
-        with open(train_stats_path) as f:
-            train_stats = json.load(f)
+        # with open(train_stats_path) as f:
+        #     train_stats = json.load(f)
 
-        for split in ["val", "test"]:
-            preprocess_and_save(
-                input_dir=cluster_raw_dir,
-                output_dir=cluster_norm_dir,
-                split=split,
-                train_stats=train_stats
-            )
+        # for split in ["val", "test"]:
+        #     preprocess_and_save(
+        #         input_dir=cluster_raw_dir,
+        #         output_dir=cluster_norm_dir,
+        #         split=split,
+        #         train_stats=train_stats
+        #     )
 
-        print(f"[✓] Done with {cluster_name}")
+        # print(f"[✓] Done with {cluster_name}")
 
         # Interpolate after normalization
         for split in ["train", "val", "test"]:
             interpolate_temperature_data(
-                input_dir=cluster_norm_dir,
+                input_dir=cluster_raw_dir,
                 split=split,
                 method="bicubic",  # or "bilinear"
                 scale_factor=8

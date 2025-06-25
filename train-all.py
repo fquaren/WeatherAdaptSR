@@ -32,7 +32,7 @@ def main():
     parser.add_argument("--resume_exp", type=str, default=None, help="Local or curnagl config")
     parser.add_argument("--model", type=str, default=None, help="Model name")
     args = parser.parse_args()
-    config = "config_local" if args.config == "local" else "config_curnagl_all"
+    config = "config_local" if args.config == "local" else "config_curnagl"
     resume_exp = args.resume_exp
     model_name = args.model
     print("Using config: ", config)
@@ -147,8 +147,8 @@ def main():
     print(f"Moving model to device: {device} ...")
     model.to(device)
     # Get dataloaders for all clusters excluding the current one
-    print(f"Training excluding cluster: {excluded_cluster}")
-    cluster_dataloaders = get_clusters_dataloader(
+    print(f"[{exp_id}] TRAINING: Excluding cluster: {excluded_cluster}")
+    loaders = get_clusters_dataloader(
         data_path=config["paths"]["data_path"],
         elev_dir=config["paths"]["elev_path"],
         excluded_cluster=excluded_cluster,
@@ -157,37 +157,32 @@ def main():
         num_workers=config["training"]["num_workers"],
         use_theta_e=config["training"]["use_theta_e"],
         device=device_data,
+        augment=config["training"]["augment"],
     )
-    train_loader = cluster_dataloaders["train"]
-    val_loader = cluster_dataloaders["val"]
-    # Train model
+
     _ = train_model(
         model=model,
         excluding_cluster=excluded_cluster,
         num_epochs=config["training"]["num_epochs"],
-        train_loader=train_loader,
-        val_loader=val_loader,
+        train_loader=loaders["train"],
+        val_loader=loaders["val"],
         config=config,
         device=device,
         save_path=output_dir,
     )
-    # Empty gpu memory
-    print(f"Finished training excluding cluster: {excluded_cluster}")
-    print(f"Emptying GPU memory for cluster: {excluded_cluster}")
-    for dataset in cluster_dataloaders["train"].dataset.datasets:
-        dataset.unload_from_gpu()
-    for dataset in cluster_dataloaders["val"].dataset.datasets:
-        dataset.unload_from_gpu()
-    for dataset in cluster_dataloaders["test"].dataset.datasets:
-        dataset.unload_from_gpu()
-    del train_loader, val_loader, cluster_dataloaders, model
+
+    # Empty GPU memory
+    print(f"[{exp_id}] TRAINING: Finished training excluding cluster: {excluded_cluster}")
+    print(f"[{exp_id}] TRAINING: Emptying GPU memory for cluster: {excluded_cluster}")
+    for split in ["train", "val", "test"]:
+        dataset = loaders[split].dataset
+        for d in dataset.datasets:
+            d.unload_from_gpu()
+
+    del model, loaders
     torch.cuda.empty_cache()
     gc.collect()
-    print(f"GPU memory emptied for cluster: {excluded_cluster}")
-
-    # If method=mmd
-
-    # If method=mdan
+    print(f"[{exp_id}] TRAINING: GPU memory emptied for cluster: {excluded_cluster}")
 
     print("All clusters trained. Experiment completed.")
     print(f"Experiment saved at: {output_dir}")
@@ -198,7 +193,7 @@ def main():
         yaml.dump(config, file)
         file.write(f"EXPERIMENT_ELAPSED_TIME: {pd.Timestamp.now() - start_time}\n")
 
-    return output_dir
+    return print(output_dir)
 
 if __name__ == "__main__":
     main()

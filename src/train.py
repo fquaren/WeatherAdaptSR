@@ -5,44 +5,36 @@ import time
 from tqdm import tqdm
 import gc
 import yaml
+import logging
 
-from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
+from data.dataloader import get_clusters_dataloader
+
+LOGGER = logging.getLogger("experiment")
 
 
-def objective(trial, model, num_epochs, cluster, cluster_names, config, device, device_data, optimize_single_cluster=False):
+def objective(trial, model, num_epochs, cluster, cluster_names, config, device, device_data, augment):
     # Hyperparameter optimization
-    lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
+    lr = trial.suggest_float("lr", 1e-6, 1e-4, log=True)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
 
     optimizer = getattr(torch.optim, config["training"]["optimizer"])(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
     criterion = getattr(torch.nn, config["training"]["criterion"])()
     
-    if optimize_single_cluster:
-        cluster_dataloaders = get_single_cluster_dataloader(
-            data_path=config["paths"]["data_path"],
-            elev_dir=config["paths"]["elev_path"],
-            cluster=cluster,
-            batch_size=config["training"]["batch_size"],
-            num_workers=config["training"]["num_workers"],
-            use_theta_e=config["training"]["use_theta_e"],
-            device=device_data,
-        )
-        train_loader = cluster_dataloaders["train"]
-        val_loader = cluster_dataloaders["val"]
-    else:
-        cluster_dataloaders = get_clusters_dataloader(
-            data_path=config["paths"]["data_path"],
-            elev_dir=config["paths"]["elev_path"],
-            excluded_cluster=cluster,
-            cluster_names=cluster_names,
-            batch_size=config["training"]["batch_size"],
-            num_workers=config["training"]["num_workers"],
-            use_theta_e=config["training"]["use_theta_e"],
-            device=device_data,
-        )
-        train_loader = cluster_dataloaders["train"]
-        val_loader = cluster_dataloaders["val"]
+    cluster_dataloaders = get_clusters_dataloader(
+        data_path=config["paths"]["data_path"],
+        elev_dir=config["paths"]["elev_path"],
+        excluded_cluster=cluster,
+        cluster_names=cluster_names,
+        batch_size=config["training"]["batch_size"],
+        num_workers=config["training"]["num_workers"],
+        use_theta_e=config["training"]["use_theta_e"],
+        device=device_data,
+        augment=augment,
+    )
+
+    train_loader = cluster_dataloaders["train"]
+    val_loader = cluster_dataloaders["val"]
 
     for n in range(num_epochs):
         _, val_loss = _train_step(
@@ -55,18 +47,19 @@ def objective(trial, model, num_epochs, cluster, cluster_names, config, device, 
             device=device
         )
 
-    # Empty gpu memory
-    print(f"Emptying GPU memory ...")
-    for dataset in cluster_dataloaders["train"].dataset.datasets:
-        dataset.unload_from_gpu()
-    for dataset in cluster_dataloaders["val"].dataset.datasets:
-        dataset.unload_from_gpu()
-    for dataset in cluster_dataloaders["test"].dataset.datasets:
-        dataset.unload_from_gpu()
+    # Empty GPU memory
+    LOGGER.info(f"OPTIMIZATION: Emptying GPU memory ...")
+    for split in ["train", "val", "test"]:
+        dataset = cluster_dataloaders[split].dataset
+        if hasattr(dataset, "datasets"):  # likely a ConcatDataset
+            for d in dataset.datasets:
+                d.unload_from_gpu()
+        else:
+            dataset.unload_from_gpu()
     del train_loader, val_loader, cluster_dataloaders, model
     torch.cuda.empty_cache()
     gc.collect()
-    print(f"GPU memory emptied ...")
+    LOGGER.info(f"OPTIMIZATION: GPU memory emptied ...")
 
     return val_loss
 
@@ -118,15 +111,17 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(optimizer, **config["training"]["scheduler_params"])
     criterion = getattr(torch.nn, config["training"]["criterion"])()
 
+    early_stopping = config["training"]["early_stopping"]
     patience = config["training"]["early_stopping_params"]["patience"]
+    rolling_mean_threshold = config["training"]["early_stopping_params"]["rolling_mean_threshold"]
+    rolling_mean_window = config["training"]["early_stopping_params"]["rolling_mean_window"]
 
     train_losses, val_losses = [], []
-    early_stop_counter = 0
     
     # Load checkpoint if exists
     cluster_dir = os.path.join(save_path, excluding_cluster)
     if os.path.exists(os.path.join(cluster_dir, "last_snapshot.pth")):
-        print(f"Loading model checkpoint from {cluster_dir} ...")
+        LOGGER.info(f"TRAINING: Loading model checkpoint from {cluster_dir} ...")
         checkpoint = torch.load(os.path.join(cluster_dir, "last_snapshot.pth"), map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -138,11 +133,12 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
             val_losses = list(np.load(os.path.join(cluster_dir, "val_losses.npy")))
         early_stop_counter = checkpoint.get("early_stop_counter", 0)
         best_val_loss = checkpoint.get("val_loss", float("inf"))
-        print(f"Resuming training from epoch {start_epoch+1}")
+        LOGGER.info(f"TRAINING: Resuming training from epoch {start_epoch+1}")
     else:
-        print("No checkpoint found, starting fresh training.")
+        LOGGER.info("TRAINING: No checkpoint found, starting fresh training.")
         os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
         start_epoch = 0
+        early_stop_counter = 0
         best_val_loss = float("inf")
 
     # Logging
@@ -155,7 +151,7 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
             f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
 
     # Training loop
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in tqdm(range(start_epoch, num_epochs)):
 
         model.train()
         epoch_start_time = time.time()
@@ -171,7 +167,13 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        # Save only the latest best model snapshot
+        # Compute the rolling average of the val loss
+        if len(val_losses) > rolling_mean_window:
+            rolling_mean_val_loss = np.mean(val_losses[-rolling_mean_window:])
+        else:
+            rolling_mean_val_loss = np.mean(val_losses)
+    
+        # Save the latest best model snapshot
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             snapshot_path = os.path.join(cluster_dir, f"best_snapshot.pth")
@@ -184,11 +186,8 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
                 "val_loss": val_loss,
                 "early_stop_counter": early_stop_counter
             }, snapshot_path)
-            early_stop_counter = 0
-        else:
+        if rolling_mean_val_loss < rolling_mean_threshold:
             early_stop_counter += 1
-
-        print(f"Epoch {epoch}, Train loss: {train_loss}, Val loss: {val_loss}")
 
         # Logging
         epoch_time = time.time() - epoch_start_time
@@ -198,8 +197,8 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
             f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n")
 
         # Early Stopping
-        if config["training"]["early_stopping"] and early_stop_counter >= patience:
-            print("Early stopping triggered.")
+        if early_stopping and early_stop_counter >= patience:
+            LOGGER.info("TRAINING: Early stopping triggered.")
             # Save the last model state
             last_snapshot_path = os.path.join(cluster_dir, f"last_snapshot.pth")
             torch.save({
@@ -211,15 +210,15 @@ def train_model(model, excluding_cluster, num_epochs, train_loader, val_loader, 
                 "val_loss": val_loss,
                 "early_stop_counter": early_stop_counter
             }, last_snapshot_path)
-            print(f"Last model state saved to {last_snapshot_path}")
+            LOGGER.info(f"TRAINING: Last model state saved to {last_snapshot_path}")
             break
 
         torch.cuda.empty_cache()
 
-    # print("Training complete! Best model saved as:", last_snapshot_path)
+    LOGGER.info("TRAINING: Training complete! Best model saved as:", snapshot_path)
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
     np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
 
-    return best_val_loss
+    return

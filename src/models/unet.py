@@ -1,6 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 
+
+def init_weights_kaiming(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+        if m.bias is not None:
+            init.zeros_(m.bias)
 
 class UNet(nn.Module):
     def __init__(self):

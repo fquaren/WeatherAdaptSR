@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 import numpy as np
 from matplotlib import pyplot as plt
 import os
@@ -7,41 +6,10 @@ import argparse
 import yaml
 from tqdm import tqdm
 import gc
-import logging
+# from torcheval.metrics.functional import structural_similarity
 
-from data.dataloader import get_single_cluster_dataloader, load_or_compute_stats
+from data.dataloader import get_clusters_dataloader
 from src.models import unet
-
-LOGGER = logging.getLogger("experiment")
-
-
-def compute_ssim(x, y, C1=0.01**2, C2=0.03**2):
-    """
-    Compute SSIM (Structural Similarity Index) between two images (2D tensors).
-
-    Args:
-        x, y: input images (2D tensors), assumed to be normalized to [0, 1]
-        C1, C2: SSIM constants (default values from the original paper)
-
-    Returns:
-        SSIM index (scalar)
-    """
-    assert x.shape == y.shape, "SSIM: input shapes must match"
-
-    x = x.float()
-    y = y.float()
-
-    mu_x = x.mean()
-    mu_y = y.mean()
-
-    sigma_x = ((x - mu_x) ** 2).mean()
-    sigma_y = ((y - mu_y) ** 2).mean()
-    sigma_xy = ((x - mu_x) * (y - mu_y)).mean()
-
-    numerator = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
-    denominator = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2)
-
-    return numerator / denominator
 
 
 def evaluate_model(model, criterion, test_loader, device="cuda"):
@@ -221,6 +189,15 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, model_architecture, metric
     """
     assert mean_eval_matrix.shape[0] == mean_eval_matrix.shape[1], "Matrix must be square"
     N = mean_eval_matrix.shape[0]
+
+    # arr = mean_eval_matrix.copy()
+    # cols_to_move = arr[:, [2, 3]].copy()
+    # mean_eval_matrix[:, 2:9] = mean_eval_matrix[:, 4:11]
+    # mean_eval_matrix[:, 9:11] = cols_to_move
+
+    # rows_to_move = mean_eval_matrix[[2, 3], :].copy()
+    # mean_eval_matrix[2:9, :] = mean_eval_matrix[4:11, :]
+    # mean_eval_matrix[9:11, :] = rows_to_move
     
     # TODO: make into function --------------------------------
     # 1. Compute the mean of the diagonal (same cluster train-test)
@@ -239,10 +216,10 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, model_architecture, metric
     consistency = 1/(N*(N-1))*np.sum(np.array(sum_differences))
     # --------------------------------------------------------
 
-    LOGGER.info(f"EVALUATION: Mean diagonal {metric}: {mean_diagonal}")
-    LOGGER.info(f"EVALUATION: Mean non-diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))}")
-    LOGGER.info(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
-    LOGGER.info(f"EVALUATION: Consistency metric: {consistency}")
+    print(f"Mean diagonal {metric}: {mean_diagonal}")
+    print(f"Mean non-diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))}")
+    print(f"Mean overall {metric}: {np.mean(mean_eval_matrix)}")
+    print(f"Consistency metric: {consistency}")
 
     # Plot mean test loss matrix
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -284,13 +261,13 @@ def main():
     exp_path = args.exp_path
     if exp_path is None:
         raise ValueError("Please provide the path to the model to evaluate using --exp_path")
-    LOGGER.info("EVALUATION: Using model path: ", exp_path)
+    print("Using model path: ", exp_path)
     
     # Load config file
     config_path = os.path.join(exp_path, "config.yaml")
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file {config_path} does not exist. Please provide a valid path.")
-    LOGGER.info("EVALUATION: Loading config from: ", config_path)
+    print("Loading config from: ", config_path)
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
@@ -300,11 +277,11 @@ def main():
         num_workers = config["training"]["num_workers"]
     else:
         num_workers = args.num_workers
-    LOGGER.info(f"EVALUATION: Num workers: {num_workers}")
+    print(f"Num workers: {num_workers}")
 
     # Set device
     device = args.device
-    LOGGER.info("EVALUATION: Device: ", device)
+    print("Device: ", device)
     
     # Load model
     model_architecture = args.model
@@ -330,12 +307,14 @@ def main():
 
     # Test in a leave-one-cluster-out cross-validation fashion
     # Compute mean test loss and ssim for each cluster
-    mean_test_loss_matrix = np.zeros((len(cluster_names), len(cluster_names)))
-    ssim_matrix = np.zeros((len(cluster_names), len(cluster_names)))
-    for i, excluded_cluster in enumerate(cluster_names):
+    mean_test_loss_matrix = np.zeros(len(cluster_names))
+    ssim_matrix = np.zeros(len(cluster_names))
+    for j, _ in enumerate(cluster_names):
+
+        excluded_cluster = "all_clusters"
         
         # Load model trained on all but excluded cluster
-        LOGGER.info(f"EVALUATION: Evaluating model trained on cluster: {excluded_cluster}")
+        print(f"Evaluating model trained on cluster: {excluded_cluster}")
 
         save_path = os.path.join(exp_path, excluded_cluster)
         evaluation_path = os.path.join(save_path, "evaluation")
@@ -347,100 +326,97 @@ def main():
         if os.path.exists(snapshot_path):
             snapshot = torch.load(os.path.join(snapshot_path), map_location=torch.device(device), weights_only=False)
             model.load_state_dict(snapshot["model_state_dict"])
-            LOGGER.info(f"EVALUATION: Loaded model from {snapshot_path}")
+            print(f"Loaded model from {snapshot_path}")
         else:
             raise FileNotFoundError(f"Snapshot file {snapshot_path} does not exist.")
         
         model.to(device)
         model.eval()
 
-        # Evaluate on all clusters
-        for j, cluster in enumerate(cluster_names):
+        # Load dataloaders
+        cluster_dataloaders = get_clusters_dataloader(
+            data_path=config["paths"]["data_path"],
+            elev_dir=config["paths"]["elev_path"],
+            excluded_cluster=excluded_cluster,
+            cluster_names=cluster_names,
+            batch_size=config["training"]["batch_size"],
+            num_workers=config["training"]["num_workers"],
+            use_theta_e=config["training"]["use_theta_e"],
+            device=device_data,
+        )
+        test_loader = cluster_dataloaders["test"]
 
-            stats = load_or_compute_stats(cluster)
-
-            # Load dataloaders
-            cluster_dataloader = get_single_cluster_dataloader(
-                data_path=config["paths"]["data_path"],
-                elev_dir=config["paths"]["elev_path"],
-                cluster_name=cluster,
-                stats=stats,
-                batch_size=config["training"]["batch_size"],
-                num_workers=config["training"]["num_workers"],
-                use_theta_e=config["training"]["use_theta_e"],
-                device=device_data,
+        if method == "vanilla":
+            evaluation_results = evaluate_model(
+                model,
+                criterion,
+                test_loader,
+                device=device,
             )
-            test_loader = cluster_dataloader["test"]
-
-            if method == "vanilla":
-                evaluation_results = evaluate_model(
-                    model,
-                    criterion,
-                    test_loader,
-                    device=device,
-                )
-            if method == "mmd":
-                evaluation_results = evaluate_model_mmd(
-                    model,
-                    criterion,
-                    test_loader,
-                    device=device,
-                )
-            
-            # Save evaluation results
-            if save_eval:
-                np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
-                LOGGER.info(f"EVALUATION: Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
-
-            # Plot results
-            plot_results(
-                evaluation_results,
-                excluded_cluster,
-                cluster,
-                evaluation_path,
-                save=True
+        if method == "mmd":
+            evaluation_results = evaluate_model_mmd(
+                model,
+                criterion,
+                test_loader,
+                device=device,
             )
 
-            # Compute mean test loss
-            mean_test_loss_matrix[i, j] = np.mean(evaluation_results["test_losses"])
+        # Save evaluation results
+        if save_eval:
+            np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
+            print(f"Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
 
-            # SSIM
-            preds = evaluation_results["predictions"]
-            targets = evaluation_results["targets"]
-            ssim_values = torch.tensor([
-                compute_ssim(p, t)
-                for p, t in zip(preds, targets)
-            ])
+        # Plot results
+        plot_results(
+            evaluation_results,
+            excluded_cluster,
+            excluded_cluster,
+            evaluation_path,
+            save=True
+        )
 
-            mean_ssim = ssim_values.mean().item()
-            ssim_matrix[i, j] = mean_ssim
+        # Compute mean test loss
+        mean_test_loss_matrix[j] = np.mean(evaluation_results["test_losses"])
 
-            # Free up memory
-            cluster_dataloader["train"].dataset.unload_from_gpu()            
-            cluster_dataloader["val"].dataset.unload_from_gpu()
-            cluster_dataloader["test"].dataset.unload_from_gpu()
-            del test_loader, cluster_dataloader
-            torch.cuda.empty_cache()
-            gc.collect()
+        # SSIM
+        preds = evaluation_results["predictions"]
+        targets = evaluation_results["targets"]
+        # ssim_values = np.array([
+        #     structural_similarity(p.unsqueeze(0), t.unsqueeze(0)).item()
+        #     for p, t in zip(preds, targets)
+        # ])
+        # mean_ssim = np.mean(ssim_values)
+        # ssim_matrix[j] = mean_ssim
+
+        # Free up memory
+        for dataset in cluster_dataloaders["train"].dataset.datasets:
+            dataset.unload_from_gpu()
+        for dataset in cluster_dataloaders["val"].dataset.datasets:
+            dataset.unload_from_gpu()
+        for dataset in cluster_dataloaders["test"].dataset.datasets:
+            dataset.unload_from_gpu()
+        del test_loader, cluster_dataloaders
+        torch.cuda.empty_cache()
+        gc.collect()
 
     # MSE matrix
     np.savez(os.path.join(exp_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
-    LOGGER.info("EVALUATION: MSE matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
+    print("MSE matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
     
     # SSIM matrix
     np.savez(os.path.join(exp_path, "ssim_matrix.npz"), ssim_matrix)
-    LOGGER.info("EVALUATION: SSIM matrix saved to ", os.path.join(exp_path, "ssim_matrix.npz"))
+    print("SSIM matrix saved to ", os.path.join(exp_path, "ssim_matrix.npz"))
 
     # Plot
-    cluster_names = config["paths"]["clusters"]
+    # cluster_names = config["paths"]["clusters"]
 
-    mean_test_loss_matrix = np.load(os.path.join(exp_path, "mean_test_loss_matrix.npz"))["arr_0"]
-    plot_eval_matrix(mean_test_loss_matrix, cluster_names, model_architecture, "MSE", exp_path)
-    LOGGER.info("EVALUATION: Mean test loss matrix plotted and saved.")
+    # mean_test_loss_matrix = np.load(os.path.join(exp_path, "mean_test_loss_matrix.npz"))["arr_0"]
+    # plot_eval_matrix(mean_test_loss_matrix, cluster_names, model_architecture, "MSE", exp_path)
+    # print("Mean test loss matrix plotted and saved.")
 
-    ssim_matrix = np.load(os.path.join(exp_path, "ssim_matrix.npz"))["arr_0"]
-    plot_eval_matrix(ssim_matrix, cluster_names, model_architecture, "SSIM", exp_path)
-    LOGGER.info("EVALUATION: Mean SSIM matrix plotted and saved.")
+    # ssim_matrix = np.load(os.path.join(exp_path, "ssim_matrix.npz"))["arr_0"]
+    # plot_eval_matrix(ssim_matrix, cluster_names, model_architecture, "SSIM", exp_path)
+    # print("Mean test loss matrix plotted and saved.")
 
 if __name__ == "__main__":
     main()

@@ -1,15 +1,7 @@
 experiment:
-  name: "all" # "cross-val-75", "debugging"
+  name: "cross-val-v8" # "cross-val-v8"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
-  # model: UNet
-  # UNet
-  # UNet_BN
-  # UNet_DO
-  # UNet_DO_BN
-  # UNet_Noise
-  # UNet_Noise_DO_BN
-  # UNet_Trainable_Noise
 
 paths:
   local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
@@ -27,12 +19,17 @@ paths:
     "cluster_8",
     "cluster_9",
     "cluster_10",
-    "cluster_11"
+    "cluster_11",
   ]
 
+optimization:
+  num_epochs: 10  # 0 if not optimizing, 10 if optimizing
+  num_trials: 5
+
 training:
-  num_epochs: 100
-  batch_size: 64
+  augmentation: False
+  num_epochs: 200
+  batch_size: 32
   use_theta_e: False
   load_data_on_gpu: True
   num_workers: 0  # 0 if on GH200
@@ -40,26 +37,23 @@ training:
   early_stopping_params:
     patience: 15
   criterion: MSELoss
-  optimizer: Adam
-  # optimizer_params:
-  #   lr: 0.0005
-  #   weight_decay: 0.0001
-  scheduler: ReduceLROnPlateau
+  optimizer: AdamW
+  scheduler: CosineAnnealingLR
   scheduler_params:
-    mode: "min"
-    factor: 0.5
-    patience: 5
+    T_max: 200
+    eta_min: 0.0000001  #1e-7
+  augment: False
   mmd:
-    lambda_max: 0.5
+    lambda_max: 1
 
 testing:
   criterion: MSELoss
 
-optimization:
-  num_epochs: 10  # 0 if not optimizing, 10 if optimizing
-  num_trials: 10
-
 domain_specific:
+  all_clusters:
+    optimizer_params:
+      lr: 0.0001
+      weight_decay: 0.0001
   cluster_0:
     optimizer_params:
       lr: 0.00010103784632843117
@@ -105,10 +99,6 @@ domain_specific:
       lr: 3.60232484808421e-06
       weight_decay: 4.580783173280096e-06
   cluster_9:
-    optimizer_params:
-      lr: 4.580079928910211e-06
-      weight_decay: 0.00012448253031874595
-  all_clusters:
     optimizer_params:
       lr: 4.580079928910211e-06
       weight_decay: 0.00012448253031874595
