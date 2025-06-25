@@ -97,7 +97,7 @@ def main():
 
     # Setup logger
     print(f"EXP: Setting up logger at {output_dir} with ID {exp_id} for model {model_name} using method {method}.")
-    logger = logging.getLogger("experiment")
+    logger = setup_logger(output_dir, exp_id, "experiment")
     logger.info(f"Starting cross-validation experiment (EXPERIMENT ID: {exp_id}, TIME: {start_time})")
     logger.info(f"EXPERIMENT ID: {exp_id}")
     logger.info(f"EXPERIMENT OUTPUT DIRECTORY: {output_dir}")
@@ -113,16 +113,6 @@ def main():
 
     # Set random seed for reproducibility
     set_seed(42)
-
-    # # Log experiment in experiments.csv: (Time, Model, Path)
-    # local_dir = config["paths"]["local_dir"]
-    # if os.path.exists(local_dir):
-    #     if not os.path.exists(os.path.join(local_dir, "experiments.csv")):
-    #         with open(os.path.join(local_dir, "experiments.csv"), "w") as file:
-    #             file.write("Time,Model,Path\n")
-    #     with open(os.path.join(local_dir, "experiments.csv"), "a") as file:
-    #         # Append a line to the csv file
-    #         file.write(f"{start_time},{model_name},{output_dir}\n")
 
     # Load data path and cluster names
     data_path = config["paths"]["data_path"]
