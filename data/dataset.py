@@ -5,19 +5,24 @@ import random
 from torch.utils.data import Dataset
 import gc
 
-import os
-import random
-import gc
-import numpy as np
-import torch
-from torch.utils.data import Dataset
 
 class SingleVariableDataset_v8(Dataset):
-    def __init__(self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda", augment=False,
-                 temp_mean=None, temp_std=None, elev_mean=None, elev_std=None):
+    def __init__(
+        self,
+        data_dir,
+        elev_dir,
+        split="train",
+        use_theta_e=False,
+        device="cuda",
+        augment=False,
+        temp_mean=None,
+        temp_std=None,
+        elev_mean=None,
+        elev_std=None,
+    ):
         """
         Dataset loading all data directly onto GPU memory, with optional normalization and augmentation.
-        
+
         Args:
             data_dir (str): Directory containing input/target .npy files.
             elev_dir (str): Directory with individual elevation .npy files.
@@ -32,15 +37,27 @@ class SingleVariableDataset_v8(Dataset):
         """
         self.device = device
         self.split = split
-        self.augment = augment if split == "train" else False  # Only augment train split
+        self.augment = (
+            augment if split == "train" else False
+        )  # Only augment train split
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
-        input_path = os.path.join(data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy")
+        input_path = os.path.join(
+            data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy"
+        )
         target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target.npy")
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
 
-        self.input_data = torch.tensor(np.load(input_path), dtype=torch.float32).unsqueeze(1).to(device)
-        self.target_data = torch.tensor(np.load(target_path), dtype=torch.float32).unsqueeze(1).to(device)
+        self.input_data = (
+            torch.tensor(np.load(input_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
+        self.target_data = (
+            torch.tensor(np.load(target_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
         self.locations = np.load(location_path)
 
         self.elev_dir = elev_dir
@@ -66,7 +83,9 @@ class SingleVariableDataset_v8(Dataset):
 
         # Load and normalize elevation
         if location_name not in self.elev_cache:
-            elev_path = os.path.join(self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy")
+            elev_path = os.path.join(
+                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
+            )
             elev_array = np.load(elev_path)
             elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
             if self.elev_mean is not None and self.elev_std is not None:
@@ -77,7 +96,9 @@ class SingleVariableDataset_v8(Dataset):
 
         # Apply augmentation if in train split
         if self.augment:
-            input_sample, elev_sample, target_sample = self.apply_augmentations(input_sample, elev_sample, target_sample)
+            input_sample, elev_sample, target_sample = self.apply_augmentations(
+                input_sample, elev_sample, target_sample
+            )
 
         return input_sample, elev_sample, target_sample
 
@@ -124,8 +145,18 @@ class SingleVariableDataset_v8(Dataset):
 
 
 class SingleVariableDataset_v7(Dataset):
-    def __init__(self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda",
-                 temp_mean=None, temp_std=None, elev_mean=None, elev_std=None):
+    def __init__(
+        self,
+        data_dir,
+        elev_dir,
+        split="train",
+        use_theta_e=False,
+        device="cuda",
+        temp_mean=None,
+        temp_std=None,
+        elev_mean=None,
+        elev_std=None,
+    ):
         """
         Dataset loading all data directly onto GPU memory with optional normalization.
         """
@@ -133,12 +164,22 @@ class SingleVariableDataset_v7(Dataset):
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         # Load full input & target into GPU
-        input_path = os.path.join(data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy")
+        input_path = os.path.join(
+            data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy"
+        )
         target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target.npy")
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
 
-        self.input_data = torch.tensor(np.load(input_path), dtype=torch.float32).unsqueeze(1).to(device)
-        self.target_data = torch.tensor(np.load(target_path), dtype=torch.float32).unsqueeze(1).to(device)
+        self.input_data = (
+            torch.tensor(np.load(input_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
+        self.target_data = (
+            torch.tensor(np.load(target_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
         self.locations = np.load(location_path)
 
         self.elev_dir = elev_dir
@@ -162,7 +203,9 @@ class SingleVariableDataset_v7(Dataset):
 
         location_name = tuple(self.locations[idx])
         if location_name not in self.elev_cache:
-            elev_path = os.path.join(self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy")
+            elev_path = os.path.join(
+                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
+            )
             elev_array = np.load(elev_path)
             elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
 
@@ -186,7 +229,9 @@ class SingleVariableDataset_v7(Dataset):
 
 
 class SingleVariableDataset_v6(Dataset):
-    def __init__(self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda"):
+    def __init__(
+        self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda"
+    ):
         """
         Dataset loading all data directly onto GPU memory.
 
@@ -201,12 +246,24 @@ class SingleVariableDataset_v6(Dataset):
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         # Load full input & target into GPU
-        input_path = os.path.join(data_dir, f"{split}_{self.suffix}_input_normalized_interp8x_bicubic.npy")
-        target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target_normalized.npy")
+        input_path = os.path.join(
+            data_dir, f"{split}_{self.suffix}_input_normalized_interp8x_bicubic.npy"
+        )
+        target_path = os.path.join(
+            data_dir, f"{split}_{self.suffix}_target_normalized.npy"
+        )
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
 
-        self.input_data = torch.tensor(np.load(input_path), dtype=torch.float32).unsqueeze(1).to(device)
-        self.target_data = torch.tensor(np.load(target_path), dtype=torch.float32).unsqueeze(1).to(device)
+        self.input_data = (
+            torch.tensor(np.load(input_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
+        self.target_data = (
+            torch.tensor(np.load(target_path), dtype=torch.float32)
+            .unsqueeze(1)
+            .to(device)
+        )
         self.locations = np.load(location_path)
 
         self.elev_dir = elev_dir
@@ -221,14 +278,20 @@ class SingleVariableDataset_v6(Dataset):
 
         location_name = tuple(self.locations[idx])
         if location_name not in self.elev_cache:
-            elev_path = os.path.join(self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy")
+            elev_path = os.path.join(
+                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
+            )
             elev_array = np.load(elev_path)
-            self.elev_cache[location_name] = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+            self.elev_cache[location_name] = (
+                torch.tensor(elev_array, dtype=torch.float32)
+                .unsqueeze(0)
+                .to(self.device)
+            )
 
         elev_sample = self.elev_cache[location_name]
-        
+
         return input_sample, elev_sample, target_sample
-    
+
     def unload_from_gpu(self):
         del self.input_data
         del self.target_data
@@ -256,8 +319,14 @@ class SingleVariableDataset_v5(Dataset):
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         # Memory-mapped input/target
-        self.input_data = np.load(os.path.join(data_dir, f"{split}_{self.suffix}_input_bicubic.npy"), mmap_mode='r')
-        self.target_data = np.load(os.path.join(data_dir, f"{split}_{self.suffix}_target_normalized.npy"), mmap_mode='r')
+        self.input_data = np.load(
+            os.path.join(data_dir, f"{split}_{self.suffix}_input_bicubic.npy"),
+            mmap_mode="r",
+        )
+        self.target_data = np.load(
+            os.path.join(data_dir, f"{split}_{self.suffix}_target_normalized.npy"),
+            mmap_mode="r",
+        )
         self.location_file = os.path.join(data_dir, f"{split}_LOCATION.npy")
         self.elev_dir = elev_dir
 
@@ -271,14 +340,22 @@ class SingleVariableDataset_v5(Dataset):
         return self.input_data.shape[0]
 
     def __getitem__(self, idx):
-        input_sample = torch.tensor(self.input_data[idx], dtype=torch.float32).unsqueeze(0)
-        target_sample = torch.tensor(self.target_data[idx], dtype=torch.float32).unsqueeze(0)
+        input_sample = torch.tensor(
+            self.input_data[idx], dtype=torch.float32
+        ).unsqueeze(0)
+        target_sample = torch.tensor(
+            self.target_data[idx], dtype=torch.float32
+        ).unsqueeze(0)
 
         location_name = tuple(self.locations[idx])
         if location_name not in self.elev_cache:
-            elev_path = os.path.join(self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy")
+            elev_path = os.path.join(
+                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
+            )
             elev_array = np.load(elev_path)
-            self.elev_cache[location_name] = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
+            self.elev_cache[location_name] = torch.tensor(
+                elev_array, dtype=torch.float32
+            ).unsqueeze(0)
 
         elev_sample = self.elev_cache[location_name]
 
@@ -300,12 +377,14 @@ class SingleVariableDataset_v4(Dataset):
         # File paths
         self.input_path = os.path.join(data_dir, f"{split}_{suffix}_input_bicubic.npy")
         self.elev_path = os.path.join(data_dir, f"{split}_HSURF.npy")
-        self.target_path = os.path.join(data_dir, f"{split}_{suffix}_target_normalized.npy")
+        self.target_path = os.path.join(
+            data_dir, f"{split}_{suffix}_target_normalized.npy"
+        )
 
         # Use memory-mapped arrays to avoid loading all data into RAM
-        self.input_data = np.load(self.input_path, mmap_mode='r')
-        self.elev_data = np.load(self.elev_path, mmap_mode='r')
-        self.target_data = np.load(self.target_path, mmap_mode='r')
+        self.input_data = np.load(self.input_path, mmap_mode="r")
+        self.elev_data = np.load(self.elev_path, mmap_mode="r")
+        self.target_data = np.load(self.target_path, mmap_mode="r")
 
     def __len__(self):
         return self.input_data.shape[0]
@@ -324,30 +403,40 @@ class SingleVariableDataset_v3(Dataset):
         """
         suffix = "theta_e" if use_theta_e else "T_2M"
 
-        self.input = torch.tensor(
-            np.load(f"{data_dir}/{split}_{suffix}_input_bicubic.npy"),
-            dtype=torch.float32,
-        ).unsqueeze(1).to(device)
+        self.input = (
+            torch.tensor(
+                np.load(f"{data_dir}/{split}_{suffix}_input_bicubic.npy"),
+                dtype=torch.float32,
+            )
+            .unsqueeze(1)
+            .to(device)
+        )
 
-        self.elev = torch.tensor(
-            np.load(os.path.join(data_dir, f'{split}_HSURF.npy')),
-            dtype=torch.float32
-        ).unsqueeze(1).to(device)
+        self.elev = (
+            torch.tensor(
+                np.load(os.path.join(data_dir, f"{split}_HSURF.npy")),
+                dtype=torch.float32,
+            )
+            .unsqueeze(1)
+            .to(device)
+        )
 
-        self.target = torch.tensor(
-            np.load(f"{data_dir}/{split}_{suffix}_target_normalized.npy"),
-            dtype=torch.float32,
-        ).unsqueeze(1).to(device)
+        self.target = (
+            torch.tensor(
+                np.load(f"{data_dir}/{split}_{suffix}_target_normalized.npy"),
+                dtype=torch.float32,
+            )
+            .unsqueeze(1)
+            .to(device)
+        )
 
     def __len__(self):
         return self.input.shape[0]
 
     def __getitem__(self, idx):
         return self.input[idx], self.elev[idx], self.target[idx]
-    
+
     def unload_from_gpu(self):
         self.input = self.input.to("cpu")
         self.target = self.target.to("cpu")
         self.elev = self.elev.to("cpu")
-
-

@@ -1,6 +1,6 @@
-
 import logging
 import os
+
 
 class ExperimentIDFilter(logging.Filter):
     def __init__(self, exp_id):
@@ -33,10 +33,6 @@ def setup_logger(output_dir, exp_id, name="experiment"):
     stream_handler.addFilter(exp_filter)
 
     # Set up the root logger
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[file_handler, stream_handler]
-    )
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 
     return logging.getLogger(name)
-

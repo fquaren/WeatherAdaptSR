@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 import numpy as np
 from matplotlib import pyplot as plt
 import os
@@ -8,8 +7,7 @@ import yaml
 from tqdm import tqdm
 import gc
 import logging
-
-from data.dataloader import get_single_cluster_dataloader, load_or_compute_stats
+from data.dataloader import get_single_cluster_dataloader
 from src.models import unet
 
 LOGGER = logging.getLogger("experiment")
@@ -39,7 +37,7 @@ def compute_ssim(x, y, C1=0.01**2, C2=0.03**2):
     sigma_xy = ((x - mu_x) * (y - mu_y)).mean()
 
     numerator = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
-    denominator = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2)
+    denominator = (mu_x**2 + mu_y**2 + C1) * (sigma_x + sigma_y + C2)
 
     return numerator / denominator
 
@@ -47,35 +45,37 @@ def compute_ssim(x, y, C1=0.01**2, C2=0.03**2):
 def evaluate_model(model, criterion, test_loader, device="cuda"):
     """
     Evaluates the model on the test datasets from multiple clusters, computes test loss, and plots results.
-    
+
     Args:
         model: The PyTorch model to evaluate.
-        config (dict): The configuration containing criterion and other settings.
+        criterion: The loss function.
         test_loader (array): Array where values are DataLoader instances for testing.
-        save_path (str): Directory to save the evaluation results.
         device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
-        save (bool): Whether to save the plots and losses.
-    
+
     Returns:
-        float: The mean test loss across all clusters.
+        dict: Evaluation results containing test_losses, predictions, targets, elevations, inputs.
     """
-      
+
     test_losses, predictions, targets, elevations, inputs = [], [], [], [], []
     with torch.no_grad():
         for temperature, elevation, target in tqdm(test_loader):
             # TODO: get file name from the dataloader
-            temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
+            temperature, elevation, target = (
+                temperature.to(device),
+                elevation.to(device),
+                target.to(device),
+            )
             output = model(temperature, elevation)
             loss = criterion(output, target).item()
             test_losses.append(loss)
             predictions.append(output.cpu().numpy())
             targets.append(target.cpu().numpy())
             elevations.append(elevation.cpu().numpy())
-            inputs.append(temperature.cpu().numpy()) 
-    
+            inputs.append(temperature.cpu().numpy())
+
     test_losses = np.array(test_losses)
     predictions = np.concatenate(predictions, axis=0)
-    targets = np.concatenate(targets, axis=0) 
+    targets = np.concatenate(targets, axis=0)
     elevations = np.concatenate(elevations, axis=0)
     inputs = np.concatenate(inputs, axis=0)
 
@@ -84,7 +84,7 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
         "predictions": predictions,
         "targets": targets,
         "elevations": elevations,
-        "inputs": inputs
+        "inputs": inputs,
     }
 
     return evaluation_results
@@ -93,35 +93,42 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
 def evaluate_model_mmd(model, criterion, test_loader, device="cuda"):
     """
     Evaluates the model on the test datasets from multiple clusters, computes test loss, and plots results.
-    
+
     Args:
         model: The PyTorch model to evaluate.
-        config (dict): The configuration containing criterion and other settings.
+        criterion: The loss function.
         test_loader (array): Array where values are DataLoader instances for testing.
-        save_path (str): Directory to save the evaluation results.
         device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
-        save (bool): Whether to save the plots and losses.
-    
+
     Returns:
-        float: The mean test loss across all clusters.
+        dict: Evaluation results containing test_losses, predictions, targets, elevations, inputs.
     """
-      
+
     test_losses, predictions, targets, elevations, inputs = [], [], [], [], []
     with torch.no_grad():
         for temperature, elevation, target in tqdm(test_loader):
             # TODO: get file name from the dataloader
-            temperature, elevation, target = temperature.to(device), elevation.to(device), target.to(device)
-            output, _ = model(temperature, elevation, target_variable=torch.zeros(temperature.size), target_elevation=torch.zeros(elevation.size))
+            temperature, elevation, target = (
+                temperature.to(device),
+                elevation.to(device),
+                target.to(device),
+            )
+            output, _ = model(
+                temperature,
+                elevation,
+                target_variable=torch.zeros_like(temperature),
+                target_elevation=torch.zeros_like(elevation),
+            )
             loss = criterion(output, target).item()
             test_losses.append(loss)
             predictions.append(output.cpu().numpy())
             targets.append(target.cpu().numpy())
             elevations.append(elevation.cpu().numpy())
             inputs.append(temperature.cpu().numpy())
-    
+
     test_losses = np.array(test_losses)
     predictions = np.concatenate(predictions, axis=0)
-    targets = np.concatenate(targets, axis=0) 
+    targets = np.concatenate(targets, axis=0)
     elevations = np.concatenate(elevations, axis=0)
     inputs = np.concatenate(inputs, axis=0)
 
@@ -130,13 +137,15 @@ def evaluate_model_mmd(model, criterion, test_loader, device="cuda"):
         "predictions": predictions,
         "targets": targets,
         "elevations": elevations,
-        "inputs": inputs
+        "inputs": inputs,
     }
 
     return evaluation_results
 
 
-def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, save=True):
+def plot_results(
+    evaluation_results, eval_on_cluster, cluster_name, save_path, save=True
+):
     """
     Plots the worst and best 5 examples based on test loss for a given cluster.
     """
@@ -146,18 +155,20 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
     targets = evaluation_results["targets"]
     elevations = evaluation_results["elevations"]
     inputs = evaluation_results["inputs"]
-    
+
     # Create directory for saving results
     os.makedirs(save_path, exist_ok=True)
-    
+
     # Get top 5 and bottom 5 indices based on loss
     top_5_idx = test_losses.argsort()[-5:][::-1]
     bottom_5_idx = test_losses.argsort()[:5]
-    
+
     def plot_subset(indices, title_prefix, filename_suffix):
         fig, axes = plt.subplots(5, 4, figsize=(10, 15))
-        plt.suptitle(f"{title_prefix} 5 - Mean Test Loss for model eval on {eval_on_cluster}\n"
-                     f"and tested on {cluster_name}: {test_losses.mean():.4f}")
+        plt.suptitle(
+            f"{title_prefix} 5 - Mean Test Loss for model eval on {eval_on_cluster}\n"
+            f"and tested on {cluster_name}: {test_losses.mean():.4f}"
+        )
 
         for i, idx in enumerate(indices):
             input_img = inputs[idx][0]
@@ -170,12 +181,12 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
             row_max = np.max([input_img.max(), pred_img.max(), target_img.max()])
 
             images = [input_img, pred_img, target_img, elev_img]
-            cmaps = ['coolwarm', 'coolwarm', 'coolwarm', 'viridis']
+            cmaps = ["coolwarm", "coolwarm", "coolwarm", "viridis"]
             titles = [
                 "Input",
                 f"Prediction (Loss: {test_losses[idx]:.4f})",
                 "Target",
-                "Elevation"
+                "Elevation",
             ]
 
             for j, (data, cmap, title) in enumerate(zip(images, cmaps, titles)):
@@ -191,7 +202,12 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
 
         plt.tight_layout()
         if save:
-            plt.savefig(os.path.join(save_path, f"evaluation_results_{filename_suffix}_{eval_on_cluster}_{cluster_name}.png"))
+            plt.savefig(
+                os.path.join(
+                    save_path,
+                    f"evaluation_results_{filename_suffix}_{eval_on_cluster}_{cluster_name}.png",
+                )
+            )
         plt.close(fig)
 
     # Plot worst and best
@@ -199,30 +215,46 @@ def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, s
     plot_subset(bottom_5_idx, "BEST", "best")
 
 
-def plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster):
+def plot_training_metrics(
+    save_path, evaluation_path, model_architecture, trained_on_label
+):
     # Plot training metrics
-    train_losses = np.load(os.path.join(save_path, "train_losses.npy"))
-    val_losses = np.load(os.path.join(save_path, "val_losses.npy"))
+    train_losses_path = os.path.join(save_path, "train_losses.npy")
+    val_losses_path = os.path.join(save_path, "val_losses.npy")
+
+    if not os.path.exists(train_losses_path) or not os.path.exists(val_losses_path):
+        LOGGER.warning(
+            f"Training loss files not found in {save_path}. Skipping training metrics plot."
+        )
+        return
+
+    train_losses = np.load(train_losses_path)
+    val_losses = np.load(val_losses_path)
     _ = plt.figure()
-    plt.title(f"Training metrics {model_architecture} model trained on {excluded_cluster}")
+    plt.title(
+        f"Training metrics {model_architecture} model trained on {trained_on_label}"
+    )
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
     plt.yscale("log")
-    plt.savefig(os.path.join(evaluation_path, f"training_metrics.png"))
+    plt.savefig(os.path.join(evaluation_path, "training_metrics.png"))
     plt.close()
 
 
-def plot_eval_matrix(mean_eval_matrix, cluster_names, model_architecture, metric, save_path):
-    """"
+def plot_eval_matrix(
+    mean_eval_matrix, cluster_names, model_architecture, metric, save_path
+):
+    """
     Plots the mean test loss matrix for all clusters.
     """
-    assert mean_eval_matrix.shape[0] == mean_eval_matrix.shape[1], "Matrix must be square"
+    assert (
+        mean_eval_matrix.shape[0] == mean_eval_matrix.shape[1]
+    ), "Matrix must be square"
     N = mean_eval_matrix.shape[0]
-    
-    # TODO: make into function --------------------------------
+
     # 1. Compute the mean of the diagonal (same cluster train-test)
     mean_diagonal = np.mean(np.diag(mean_eval_matrix))
 
@@ -231,22 +263,25 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, model_architecture, metric
     for i in range(mean_eval_matrix.shape[1]):
         column_values = mean_eval_matrix[:, i]
         diff = column_values - column_values[i]  # Difference from the diagonal value
-        diff = np.maximum(diff, 0)               # Apply relu to difference to avoid negative values
-        sum_diff = np.sum(np.delete(diff, i))    # Exclude the diagonal element
+        diff = np.maximum(diff, 0)  # Apply relu to difference to avoid negative values
+        sum_diff = np.sum(np.delete(diff, i))  # Exclude the diagonal element
         sum_differences.append(sum_diff)
 
     # Convert to a NumPy array for easy handling
-    consistency = 1/(N*(N-1))*np.sum(np.array(sum_differences))
-    # --------------------------------------------------------
+    consistency = 1 / (N * (N - 1)) * np.sum(np.array(sum_differences))
 
     LOGGER.info(f"EVALUATION: Mean diagonal {metric}: {mean_diagonal}")
-    LOGGER.info(f"EVALUATION: Mean non-diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))}")
+    LOGGER.info(
+        f"EVALUATION: Mean non-diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))}"
+    )
     LOGGER.info(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
     LOGGER.info(f"EVALUATION: Consistency metric: {consistency}")
 
     # Plot mean test loss matrix
     fig, ax = plt.subplots(figsize=(10, 8))
-    cax = ax.matshow(mean_eval_matrix, cmap='bwr', vmin=0, vmax=np.max(mean_eval_matrix))
+    cax = ax.matshow(
+        mean_eval_matrix, cmap="bwr", vmin=0, vmax=np.max(mean_eval_matrix)
+    )
     plt.colorbar(cax)
     ax.set_xticks(np.arange(N))
     ax.set_yticks(np.arange(N))
@@ -269,32 +304,62 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, model_architecture, metric
 def main():
     # Get model path from arg command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=str, default="cpu", help="Device to use for evaluation (cpu or cuda)")
-    parser.add_argument("--model", type=str, default=None, help="Model architecture to use for evaluation")
-    parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
-    parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
-    parser.add_argument("--num_workers", type=int, default=None, help="Number of workers (optional)")
-    parser.add_argument("--save_eval", default=False, help="Save evaluation results to disk")
-    parser.add_argument("--method", type=str, default="vanilla", help="Method name (vanilla, mmd, mdan)")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="Device to use for evaluation (cpu or cuda)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model architecture to use for evaluation",
+    )
+    parser.add_argument(
+        "--exp_path", type=str, default=None, help="Path of model to evaluate"
+    )
+    parser.add_argument(
+        "--local", type=str, default=None, help="Evaluation on local machine"
+    )
+    parser.add_argument(
+        "--num_workers", type=int, default=None, help="Number of workers (optional)"
+    )
+    parser.add_argument(
+        "--save_eval",
+        default=False,
+        action="store_true",
+        help="Save evaluation results to disk",
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default="cross-val",
+        help="Method name (single, all, cross-val, mmd)",
+    )
     args = parser.parse_args()
 
     save_eval = args.save_eval
     method = args.method
-    
+
     exp_path = args.exp_path
     if exp_path is None:
-        raise ValueError("Please provide the path to the model to evaluate using --exp_path")
-    LOGGER.info("EVALUATION: Using model path: ", exp_path)
-    
+        raise ValueError(
+            "Please provide the path to the model to evaluate using --exp_path"
+        )
+    LOGGER.info(f"EVALUATION: Using model path: {exp_path}")
+
     # Load config file
     config_path = os.path.join(exp_path, "config.yaml")
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file {config_path} does not exist. Please provide a valid path.")
-    LOGGER.info("EVALUATION: Loading config from: ", config_path)
+        raise FileNotFoundError(
+            f"Config file {config_path} does not exist. Please provide a valid path."
+        )
+    LOGGER.info(f"EVALUATION: Loading config from: {config_path}")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
-    # Num workers 
+    # Num workers
     num_workers = args.num_workers
     if num_workers is None:
         num_workers = config["training"]["num_workers"]
@@ -304,143 +369,517 @@ def main():
 
     # Set device
     device = args.device
-    LOGGER.info("EVALUATION: Device: ", device)
-    
-    # Load model
+    if device == "cuda" and not torch.cuda.is_available():
+        LOGGER.warning("INFO: CUDA is not available. Using CPU instead.")
+        device = "cpu"
+    elif device == "cuda":
+        LOGGER.info(f"INFO: Using CUDA device: {torch.cuda.get_device_name(0)}")
+    else:
+        LOGGER.info("INFO: Using CPU.")
+    LOGGER.info(f"EVALUATION: Device: {device}")
+
+    # Load model architecture
     model_architecture = args.model
     if not hasattr(unet, model_architecture):
-        raise ValueError(f"Model architecture '{model_architecture}' not found in unet.py module.")
+        raise ValueError(
+            f"Model architecture '{model_architecture}' not found in unet.py module."
+        )
     if not callable(getattr(unet, model_architecture)):
         raise ValueError(f"Model architecture '{model_architecture}' is not callable.")
-    model = getattr(unet, model_architecture)()
 
-    # Load data path and cluster names
+    # Data paths
     data_path = config["paths"]["data_path"]
-    cluster_names =  config["paths"]["clusters"] # sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
-    if config["training"]["load_data_on_gpu"]:
-        device_data = "cuda"
-    else:
-        device_data = "cpu"
+    elev_dir = config["paths"]["elev_path"]
+    cluster_names = config["paths"]["clusters"]
+    if cluster_names is None:
+        cluster_names = sorted(
+            [
+                c
+                for c in os.listdir(data_path)
+                if os.path.isdir(os.path.join(data_path, c))
+            ]
+        )
 
-    # Load criterion
-    criterion = getattr(torch.nn, config["testing"]["criterion"])()
-    if criterion is None:
-        raise ValueError(f"Criterion '{config['experiment']['criterion']}' not found.")
-    criterion.to(device)
+    # Loss function (assuming MSELoss for now, can be made configurable)
+    criterion = torch.nn.MSELoss()
 
-    # Test in a leave-one-cluster-out cross-validation fashion
-    # Compute mean test loss and ssim for each cluster
-    mean_test_loss_matrix = np.zeros((len(cluster_names), len(cluster_names)))
-    ssim_matrix = np.zeros((len(cluster_names), len(cluster_names)))
-    for i, excluded_cluster in enumerate(cluster_names):
-        
-        # Load model trained on all but excluded cluster
-        LOGGER.info(f"EVALUATION: Evaluating model trained on cluster: {excluded_cluster}")
+    if method == "single":
+        LOGGER.info(
+            "EVALUATION: Starting 'single' method evaluation (evaluating on all clusters)..."
+        )
+        single_cluster_name = config["paths"]["single_cluster"]
+        if single_cluster_name is None:
+            raise ValueError(
+                "For 'single' method, 'single_cluster' must be specified in the config file under 'paths'."
+            )
 
-        save_path = os.path.join(exp_path, excluded_cluster)
-        evaluation_path = os.path.join(save_path, "evaluation")
-        os.makedirs(evaluation_path, exist_ok=True)
+        model_save_path = os.path.join(exp_path, single_cluster_name)
+        model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
 
-        plot_training_metrics(save_path, evaluation_path, model_architecture, excluded_cluster)
+        if not os.path.exists(model_state_dict_path):
+            LOGGER.error(
+                f"EVALUATION: Model not found for single cluster '{single_cluster_name}' \
+                    at {model_state_dict_path}. Exiting."
+            )
+            return
 
-        snapshot_path = os.path.join(save_path, "best_snapshot.pth")
-        if os.path.exists(snapshot_path):
-            snapshot = torch.load(os.path.join(snapshot_path), map_location=torch.device(device), weights_only=False)
-            model.load_state_dict(snapshot["model_state_dict"])
-            LOGGER.info(f"EVALUATION: Loaded model from {snapshot_path}")
-        else:
-            raise FileNotFoundError(f"Snapshot file {snapshot_path} does not exist.")
-        
+        model = getattr(unet, model_architecture)()
+        model.load_state_dict(torch.load(model_state_dict_path, map_location=device))
         model.to(device)
         model.eval()
 
-        # Evaluate on all clusters
-        for j, cluster in enumerate(cluster_names):
+        # Plot training metrics for this model
+        evaluation_save_path = os.path.join(
+            exp_path, "evaluation_results", f"model_trained_on_{single_cluster_name}"
+        )
+        os.makedirs(evaluation_save_path, exist_ok=True)
+        plot_training_metrics(
+            model_save_path,
+            evaluation_save_path,
+            model_architecture,
+            single_cluster_name,
+        )
 
-            stats = load_or_compute_stats(cluster)
+        mean_eval_losses = []
+        mean_eval_ssims = []
 
-            # Load dataloaders
-            cluster_dataloader = get_single_cluster_dataloader(
-                data_path=config["paths"]["data_path"],
-                elev_dir=config["paths"]["elev_path"],
-                cluster_name=cluster,
-                stats=stats,
+        for j, test_cluster in enumerate(cluster_names):
+            LOGGER.info(
+                f"EVALUATION: Evaluating model trained on {single_cluster_name} on test data from {test_cluster}..."
+            )
+
+            # Get test loader for the current cluster
+            loaders = get_single_cluster_dataloader(
+                data_path=data_path,
+                elev_dir=elev_dir,
+                cluster=test_cluster,
                 batch_size=config["training"]["batch_size"],
-                num_workers=config["training"]["num_workers"],
+                num_workers=num_workers,
                 use_theta_e=config["training"]["use_theta_e"],
-                device=device_data,
+                device="cpu",  # Always load data to CPU first
+                augment=False,  # No augmentation for evaluation
+                shuffle=False,
+                test_only=True,  # Only get the test loader
             )
-            test_loader = cluster_dataloader["test"]
+            test_loader = loaders["test"]
 
-            if method == "vanilla":
-                evaluation_results = evaluate_model(
-                    model,
-                    criterion,
-                    test_loader,
-                    device=device,
+            # Decide which evaluate function to use based on model type (e.g., if it was trained with MMD)
+            # For simplicity here, assuming a standard UNet. If config has use_mmd_loss, you'd use evaluate_model_mmd.
+            # Example:
+            # if config["training"].get("use_mmd_loss", False): # Assuming a flag in config
+            #     results = evaluate_model_mmd(model, criterion, test_loader, device)
+            # else:
+            #     results = evaluate_model(model, criterion, test_loader, device)
+            results = evaluate_model(model, criterion, test_loader, device)
+
+            mean_test_loss = np.mean(results["test_losses"])
+            mean_eval_losses.append(mean_test_loss)
+
+            # Compute SSIM
+            ssim_scores = []
+            for k in range(results["predictions"].shape[0]):
+                ssim_scores.append(
+                    compute_ssim(
+                        torch.from_numpy(results["predictions"][k, 0]),
+                        torch.from_numpy(results["targets"][k, 0]),
+                    ).item()
                 )
-            if method == "mmd":
-                evaluation_results = evaluate_model_mmd(
-                    model,
-                    criterion,
-                    test_loader,
-                    device=device,
-                )
-            
-            # Save evaluation results
+            mean_ssim = np.mean(ssim_scores)
+            mean_eval_ssims.append(mean_ssim)
+
+            LOGGER.info(
+                f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
+            )
+            LOGGER.info(f"EVALUATION: Mean SSIM for {test_cluster}: {mean_ssim:.4f}")
+
             if save_eval:
-                np.savez(os.path.join(evaluation_path, f"eval_{excluded_cluster}_on_{cluster}.npz"), **evaluation_results)
-                LOGGER.info(f"EVALUATION: Evaluation results saved to {evaluation_path}/eval_{excluded_cluster}_on_{cluster}.npz")
+                plot_results(
+                    results,
+                    single_cluster_name,
+                    test_cluster,
+                    evaluation_save_path,
+                    save=True,
+                )
 
-            # Plot results
-            plot_results(
-                evaluation_results,
+            # Clean up
+            _ = loaders["test"].dataset.unload_from_gpu()
+            del loaders
+            torch.cuda.empty_cache()
+            gc.collect()
+            LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
+
+        # Clean up for the model
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        LOGGER.info(
+            "\n--- Overall Results for 'single' method model evaluated on all clusters ---"
+        )
+        LOGGER.info(f"Model trained on: {single_cluster_name}")
+        for idx, cluster in enumerate(cluster_names):
+            LOGGER.info(
+                f"  Tested on {cluster} | Mean MSE Loss: {mean_eval_losses[idx]:.4f} \
+                    | Mean SSIM: {mean_eval_ssims[idx]:.4f}"
+            )
+        LOGGER.info(
+            f"Overall Average MSE Loss across all test clusters: {np.mean(mean_eval_losses):.4f}"
+        )
+        LOGGER.info(
+            f"Overall Average SSIM across all test clusters: {np.mean(mean_eval_ssims):.4f}"
+        )
+
+    elif method == "cross-val":
+        LOGGER.info("EVALUATION: Starting cross-validation evaluation...")
+        mean_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+        ssim_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+
+        for i, excluded_cluster in enumerate(cluster_names):
+            model_save_path = os.path.join(exp_path, excluded_cluster)
+            model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+
+            if not os.path.exists(model_state_dict_path):
+                LOGGER.warning(
+                    f"EVALUATION: Model not found for excluded cluster {excluded_cluster} \
+                        at {model_state_dict_path}. Skipping."
+                )
+                continue
+
+            model = getattr(unet, model_architecture)()
+            model.load_state_dict(
+                torch.load(model_state_dict_path, map_location=device)
+            )
+            model.to(device)
+            model.eval()
+
+            # Plot training metrics for this model
+            evaluation_save_path = os.path.join(
+                exp_path, "evaluation_results", excluded_cluster
+            )
+            os.makedirs(evaluation_save_path, exist_ok=True)
+            plot_training_metrics(
+                model_save_path,
+                evaluation_save_path,
+                model_architecture,
                 excluded_cluster,
-                cluster,
-                evaluation_path,
-                save=True
             )
 
-            # Compute mean test loss
-            mean_test_loss_matrix[i, j] = np.mean(evaluation_results["test_losses"])
+            for j, test_cluster in enumerate(cluster_names):
+                LOGGER.info(
+                    f"EVALUATION: Evaluating model trained excluding {excluded_cluster} \
+                        on test data from {test_cluster}..."
+                )
 
-            # SSIM
-            preds = evaluation_results["predictions"]
-            targets = evaluation_results["targets"]
-            ssim_values = torch.tensor([
-                compute_ssim(p, t)
-                for p, t in zip(preds, targets)
-            ])
+                # Get test loader for the current cluster
+                loaders = get_single_cluster_dataloader(
+                    data_path=data_path,
+                    elev_dir=elev_dir,
+                    cluster=test_cluster,
+                    batch_size=config["training"]["batch_size"],
+                    num_workers=num_workers,
+                    use_theta_e=config["training"]["use_theta_e"],
+                    device="cpu",  # Always load data to CPU first
+                    augment=False,  # No augmentation for evaluation
+                    shuffle=False,
+                    test_only=True,  # Only get the test loader
+                )
+                test_loader = loaders["test"]
 
-            mean_ssim = ssim_values.mean().item()
-            ssim_matrix[i, j] = mean_ssim
+                results = evaluate_model(model, criterion, test_loader, device)
+                mean_test_loss = np.mean(results["test_losses"])
+                mean_eval_matrix[i, j] = mean_test_loss
 
-            # Free up memory
-            cluster_dataloader["train"].dataset.unload_from_gpu()            
-            cluster_dataloader["val"].dataset.unload_from_gpu()
-            cluster_dataloader["test"].dataset.unload_from_gpu()
-            del test_loader, cluster_dataloader
+                # Compute SSIM
+                ssim_scores = []
+                for k in range(results["predictions"].shape[0]):
+                    ssim_scores.append(
+                        compute_ssim(
+                            torch.from_numpy(results["predictions"][k, 0]),
+                            torch.from_numpy(results["targets"][k, 0]),
+                        ).item()
+                    )
+                ssim_eval_matrix[i, j] = np.mean(ssim_scores)
+
+                LOGGER.info(
+                    f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
+                )
+                LOGGER.info(
+                    f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
+                )
+
+                if save_eval:
+                    # Save plots for each test cluster
+                    plot_results(
+                        results,
+                        excluded_cluster,
+                        test_cluster,
+                        evaluation_save_path,
+                        save=True,
+                    )
+
+                # Clean up
+                _ = loaders["test"].dataset.unload_from_gpu()
+                del loaders
+                torch.cuda.empty_cache()
+                gc.collect()
+                LOGGER.info(
+                    f"EVALUATION: GPU memory emptied for cluster: {test_cluster}"
+                )
+
+            # Clean up for the model
+            del model
             torch.cuda.empty_cache()
             gc.collect()
 
-    # MSE matrix
-    np.savez(os.path.join(exp_path, "mean_test_loss_matrix.npz"), mean_test_loss_matrix)
-    LOGGER.info("EVALUATION: MSE matrix saved to ", os.path.join(exp_path, "mean_test_loss_matrix.npz"))
-    
-    # SSIM matrix
-    np.savez(os.path.join(exp_path, "ssim_matrix.npz"), ssim_matrix)
-    LOGGER.info("EVALUATION: SSIM matrix saved to ", os.path.join(exp_path, "ssim_matrix.npz"))
+        # Plot overall evaluation matrices
+        plot_eval_matrix(
+            mean_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "MSE Loss",
+            os.path.join(exp_path, "evaluation_results"),
+        )
+        plot_eval_matrix(
+            ssim_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "SSIM",
+            os.path.join(exp_path, "evaluation_results"),
+        )
 
-    # Plot
-    cluster_names = config["paths"]["clusters"]
+    elif method == "all":
+        LOGGER.info("EVALUATION: Starting 'all' method evaluation...")
+        mean_eval_matrix = np.zeros(
+            (1, len(cluster_names))
+        )  # Single model trained on all, evaluated on each
+        ssim_eval_matrix = np.zeros((1, len(cluster_names)))
 
-    mean_test_loss_matrix = np.load(os.path.join(exp_path, "mean_test_loss_matrix.npz"))["arr_0"]
-    plot_eval_matrix(mean_test_loss_matrix, cluster_names, model_architecture, "MSE", exp_path)
-    LOGGER.info("EVALUATION: Mean test loss matrix plotted and saved.")
+        model_save_path = os.path.join(
+            exp_path, "all_clusters"
+        )  # Assuming "all_clusters" is the save directory for the 'all' method
+        model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
 
-    ssim_matrix = np.load(os.path.join(exp_path, "ssim_matrix.npz"))["arr_0"]
-    plot_eval_matrix(ssim_matrix, cluster_names, model_architecture, "SSIM", exp_path)
-    LOGGER.info("EVALUATION: Mean SSIM matrix plotted and saved.")
+        if not os.path.exists(model_state_dict_path):
+            LOGGER.error(
+                f"EVALUATION: Model not found for 'all_clusters' method at {model_state_dict_path}. Exiting."
+            )
+            return
+
+        model = getattr(unet, model_architecture)()
+        model.load_state_dict(torch.load(model_state_dict_path, map_location=device))
+        model.to(device)
+        model.eval()
+
+        # Plot training metrics for this model
+        evaluation_save_path = os.path.join(
+            exp_path, "evaluation_results", "all_clusters_model"
+        )  # Distinct folder for this model's evaluation
+        os.makedirs(evaluation_save_path, exist_ok=True)
+        plot_training_metrics(
+            model_save_path, evaluation_save_path, model_architecture, "all_clusters"
+        )
+
+        for j, test_cluster in enumerate(cluster_names):
+            LOGGER.info(
+                f"EVALUATION: Evaluating model trained on all clusters on test data from {test_cluster}..."
+            )
+
+            # Get test loader for the current cluster
+            # Use get_single_cluster_dataloader for evaluation on individual test clusters
+            loaders = get_single_cluster_dataloader(
+                data_path=data_path,
+                elev_dir=elev_dir,
+                cluster=test_cluster,
+                batch_size=config["training"]["batch_size"],
+                num_workers=num_workers,
+                use_theta_e=config["training"]["use_theta_e"],
+                device="cpu",  # Always load data to CPU first
+                augment=False,  # No augmentation for evaluation
+                shuffle=False,
+                test_only=True,  # Only get the test loader
+            )
+            test_loader = loaders["test"]
+
+            results = evaluate_model(model, criterion, test_loader, device)
+            mean_test_loss = np.mean(results["test_losses"])
+            mean_eval_matrix[0, j] = (
+                mean_test_loss  # Store in the first row as there's only one model
+            )
+
+            # Compute SSIM
+            ssim_scores = []
+            for k in range(results["predictions"].shape[0]):
+                ssim_scores.append(
+                    compute_ssim(
+                        torch.from_numpy(results["predictions"][k, 0]),
+                        torch.from_numpy(results["targets"][k, 0]),
+                    ).item()
+                )
+            ssim_eval_matrix[0, j] = np.mean(ssim_scores)  # Store in the first row
+
+            LOGGER.info(
+                f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
+            )
+            LOGGER.info(
+                f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[0, j]:.4f}"
+            )
+
+            if save_eval:
+                # Save plots for each test cluster
+                plot_results(
+                    results,
+                    "all_clusters_model",
+                    test_cluster,
+                    evaluation_save_path,
+                    save=True,
+                )
+
+            # Clean up
+            _ = loaders["test"].dataset.unload_from_gpu()
+            del loaders
+            torch.cuda.empty_cache()
+            gc.collect()
+            LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
+
+        # Clean up for the model
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        # For "all" method, the matrix will be 1xN, so adjust plotting or just log the results
+        LOGGER.info("\n--- Overall Results for 'all' method ---")
+        for idx, cluster in enumerate(cluster_names):
+            LOGGER.info(
+                f"Cluster: {cluster} | Mean MSE Loss: {mean_eval_matrix[0, idx]:.4f} \
+                    | Mean SSIM: {ssim_eval_matrix[0, idx]:.4f}"
+            )
+        LOGGER.info(f"Overall Average MSE Loss: {np.mean(mean_eval_matrix):.4f}")
+        LOGGER.info(f"Overall Average SSIM: {np.mean(ssim_eval_matrix):.4f}")
+
+    elif method == "mmd":
+        LOGGER.info("EVALUATION: Starting MMD evaluation...")
+        mean_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+        ssim_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+
+        for i, excluded_cluster in enumerate(cluster_names):
+            model_save_path = os.path.join(exp_path, excluded_cluster)
+            model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+
+            if not os.path.exists(model_state_dict_path):
+                LOGGER.warning(
+                    f"EVALUATION: Model not found for excluded cluster {excluded_cluster} \
+                        at {model_state_dict_path}. Skipping."
+                )
+                continue
+
+            model = getattr(unet, model_architecture)()
+            model.load_state_dict(
+                torch.load(model_state_dict_path, map_location=device)
+            )
+            model.to(device)
+            model.eval()
+
+            # Plot training metrics for this model
+            evaluation_save_path = os.path.join(
+                exp_path, "evaluation_results", excluded_cluster
+            )
+            os.makedirs(evaluation_save_path, exist_ok=True)
+            plot_training_metrics(
+                model_save_path,
+                evaluation_save_path,
+                model_architecture,
+                excluded_cluster,
+            )
+
+            for j, test_cluster in enumerate(cluster_names):
+                LOGGER.info(
+                    f"EVALUATION: Evaluating model trained excluding {excluded_cluster} \
+                        with MMD on test data from {test_cluster}..."
+                )
+
+                # Get test loader for the current cluster
+                loaders = get_single_cluster_dataloader(
+                    data_path=data_path,
+                    elev_dir=elev_dir,
+                    cluster=test_cluster,
+                    batch_size=config["training"]["batch_size"],
+                    num_workers=num_workers,
+                    use_theta_e=config["training"]["use_theta_e"],
+                    device="cpu",  # Always load data to CPU first
+                    augment=False,  # No augmentation for evaluation
+                    shuffle=False,
+                    test_only=True,  # Only get the test loader
+                )
+                test_loader = loaders["test"]
+
+                results = evaluate_model_mmd(model, criterion, test_loader, device)
+                mean_test_loss = np.mean(results["test_losses"])
+                mean_eval_matrix[i, j] = mean_test_loss
+
+                # Compute SSIM
+                ssim_scores = []
+                for k in range(results["predictions"].shape[0]):
+                    ssim_scores.append(
+                        compute_ssim(
+                            torch.from_numpy(results["predictions"][k, 0]),
+                            torch.from_numpy(results["targets"][k, 0]),
+                        ).item()
+                    )
+                ssim_eval_matrix[i, j] = np.mean(ssim_scores)
+
+                LOGGER.info(
+                    f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
+                )
+                LOGGER.info(
+                    f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
+                )
+
+                if save_eval:
+                    # Save plots for each test cluster
+                    plot_results(
+                        results,
+                        excluded_cluster,
+                        test_cluster,
+                        evaluation_save_path,
+                        save=True,
+                    )
+
+                # Clean up
+                _ = loaders["test"].dataset.unload_from_gpu()
+                del loaders
+                torch.cuda.empty_cache()
+                gc.collect()
+                LOGGER.info(
+                    f"EVALUATION: GPU memory emptied for cluster: {test_cluster}"
+                )
+
+            # Clean up for the model
+            del model
+            torch.cuda.empty_cache()
+            gc.collect()
+
+        # Plot overall evaluation matrices
+        plot_eval_matrix(
+            mean_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "MSE Loss",
+            os.path.join(exp_path, "evaluation_results"),
+        )
+        plot_eval_matrix(
+            ssim_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "SSIM",
+            os.path.join(exp_path, "evaluation_results"),
+        )
+
+    else:
+        LOGGER.error(
+            f"EVALUATION: Unknown method '{method}'. Please use 'single', 'all', 'cross-val', or 'mmd'."
+        )
+
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)  # Basic logger setup for main execution
     main()

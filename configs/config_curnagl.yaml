@@ -21,6 +21,7 @@ paths:
     "cluster_10",
     "cluster_11",
   ]
+  single_cluster: "cluster_0"
 
 optimization:
   num_epochs: 30  # 0 if not optimizing, 10 if optimizing
@@ -100,3 +101,7 @@ domain_specific:
     optimizer_params:
       lr: 4.580079928910211e-06
       weight_decay: 0.00012448253031874595
+  all_clusters:
+    optimizer_params:
+      lr: 0.0001
+      weight_decay: 1.0e-05

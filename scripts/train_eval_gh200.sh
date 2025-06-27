@@ -20,8 +20,8 @@ export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
 models=("UNet" "UNet_DO_BN" "UNet_Noise" "UNet_MMD")
-methods=("vanilla" "vanilla" "vanilla" "mmd")
-exp_dir="/scratch/fquareng/experiments/cross-val-v8"
+methods=("cross-val" "cross-val" "cross-val" "mmd")
+# exp_dir="/scratch/fquareng/experiments/cross-val-v8"
 # resume=("$exp_dir/1k2x" "$exp_dir/2q9s" "$exp_dir/sfgs" "$exp_dir/4ntt")
 
 for i in "${!models[@]}"; do

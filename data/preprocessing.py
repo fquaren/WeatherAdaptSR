@@ -7,11 +7,20 @@ from scipy.ndimage import zoom
 
 
 def _extract_location_time(filename):
-    match = re.match(r"(\d{1,2})_(\d{1,2})_lffd(\d{4})(\d{2})", os.path.basename(filename))
+    match = re.match(
+        r"(\d{1,2})_(\d{1,2})_lffd(\d{4})(\d{2})", os.path.basename(filename)
+    )
     if match:
-        A, B, year, month = int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4))
+        A, B, year, month = (
+            int(match.group(1)),
+            int(match.group(2)),
+            int(match.group(3)),
+            int(match.group(4)),
+        )
         return A, B, year, month
-    raise ValueError(f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nz")
+    raise ValueError(
+        f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nz"
+    )
 
 
 def get_file_splits_for_all_clusters(input_dir, target_dir):
@@ -25,8 +34,12 @@ def get_file_splits_for_all_clusters(input_dir, target_dir):
         if not os.path.isdir(input_path) or not os.path.isdir(target_path):
             continue
 
-        all_input_files = sorted([f for f in os.listdir(input_path) if f.endswith(".nz")])
-        all_target_files = sorted([f for f in os.listdir(target_path) if f.endswith(".nz")])
+        all_input_files = sorted(
+            [f for f in os.listdir(input_path) if f.endswith(".nz")]
+        )
+        all_target_files = sorted(
+            [f for f in os.listdir(target_path) if f.endswith(".nz")]
+        )
 
         train_inputs, val_inputs, test_inputs = [], [], []
         train_targets, val_targets, test_targets = [], [], []
@@ -70,7 +83,9 @@ def load_nc_variables(file_path, var_names):
         }
 
 
-def process_files_pair(input_files, target_files, output_name_prefix, save_dir, excluded_cluster):
+def process_files_pair(
+    input_files, target_files, output_name_prefix, save_dir, excluded_cluster
+):
     target_vars = ["T_2M"]
     processed_inputs = {var: [] for var in target_vars}
     processed_targets = {var: [] for var in target_vars}
@@ -104,14 +119,28 @@ def process_files_pair(input_files, target_files, output_name_prefix, save_dir, 
 
     for var in target_vars:
         try:
-            np.save(f"{save_dir}/{excluded_cluster}/{output_name_prefix}_{var}_input.npy", np.stack(processed_inputs[var]))
-            np.save(f"{save_dir}/{excluded_cluster}/{output_name_prefix}_{var}_target.npy", np.stack(processed_targets[var]))
-            print(f"Saved {var}_input and {var}_target with shape {np.shape(processed_inputs[var])}")
+            np.save(
+                f"{save_dir}/{excluded_cluster}/{output_name_prefix}_{var}_input.npy",
+                np.stack(processed_inputs[var]),
+            )
+            np.save(
+                f"{save_dir}/{excluded_cluster}/{output_name_prefix}_{var}_target.npy",
+                np.stack(processed_targets[var]),
+            )
+            print(
+                f"Saved {var}_input and {var}_target with shape {np.shape(processed_inputs[var])}"
+            )
         except Exception as e:
             print(f"Failed to save {var}: {e}")
 
-    np.save(f"{save_dir}/{excluded_cluster}/{output_name_prefix}_LOCATION.npy", np.array(location_list))
-    np.save(f"{save_dir}/{excluded_cluster}/{output_name_prefix}_FILENAME.npy", np.array(filename_list))
+    np.save(
+        f"{save_dir}/{excluded_cluster}/{output_name_prefix}_LOCATION.npy",
+        np.array(location_list),
+    )
+    np.save(
+        f"{save_dir}/{excluded_cluster}/{output_name_prefix}_FILENAME.npy",
+        np.array(filename_list),
+    )
     print(f"Saved LOCATION, FILENAME with {len(location_list)} entries")
 
 
@@ -120,7 +149,7 @@ def compute_stats(x):
         "mean": float(x.mean()),
         "std": float(x.std()),
         "min": float(x.min()),
-        "max": float(x.max())
+        "max": float(x.max()),
     }
 
 
@@ -162,7 +191,9 @@ def preprocess_and_save(input_dir, output_dir, split="train", train_stats=None):
     print(f"[✓] Preprocessing complete for '{split}'. Files saved to '{output_dir}'.")
 
 
-def interpolate_temperature_data(input_dir, split="train", var="T_2M", method="bilinear", scale_factor=8):
+def interpolate_temperature_data(
+    input_dir, split="train", var="T_2M", method="bilinear", scale_factor=8
+):
     """
     Interpolates normalized input temperature data to a higher resolution.
 
@@ -195,10 +226,12 @@ def interpolate_temperature_data(input_dir, split="train", var="T_2M", method="b
         raise ValueError("Invalid method. Use 'bilinear' or 'bicubic'.")
 
     # Assume input shape is (N, H, W)
-    upscaled_data = np.stack([
-        zoom(sample, zoom=(scale_factor, scale_factor), order=order)
-        for sample in data
-    ])
+    upscaled_data = np.stack(
+        [
+            zoom(sample, zoom=(scale_factor, scale_factor), order=order)
+            for sample in data
+        ]
+    )
 
     # out_fname = f"{split}_{var}_input_normalized_interp{scale_factor}x_{method}.npy"
     out_fname = f"{split}_{var}_input_interp{scale_factor}x_{method}.npy"
@@ -209,8 +242,15 @@ def interpolate_temperature_data(input_dir, split="train", var="T_2M", method="b
 
 
 def main():
-    input_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/old/DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred"
-    target_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/old/DA/1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12"
+    old_data_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/old/DA/"
+    input_dir = os.path.join(
+        old_data_dir,
+        "1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred",
+    )
+    target_dir = os.path.join(
+        old_data_dir,
+        "1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12",
+    )
     save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/new_clusters"
     normalized_root = os.path.join(save_dir, "normalized_data")
 
@@ -225,7 +265,7 @@ def main():
                 target_files=target_files,
                 output_name_prefix=split,
                 excluded_cluster=cluster_name,
-                save_dir=save_dir
+                save_dir=save_dir,
             )
 
         cluster_raw_dir = os.path.join(save_dir, cluster_name)
@@ -258,7 +298,7 @@ def main():
                 input_dir=cluster_raw_dir,
                 split=split,
                 method="bicubic",  # or "bilinear"
-                scale_factor=8
+                scale_factor=8,
             )
 
 

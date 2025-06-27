@@ -5,23 +5,24 @@ import torch.nn.init as init
 
 def init_weights_kaiming(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-        init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+        init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="relu")
         if m.bias is not None:
             init.zeros_(m.bias)
+
 
 class UNet(nn.Module):
     def __init__(self):
         super(UNet, self).__init__()
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256)
@@ -29,37 +30,38 @@ class UNet(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
-    def forward(self, variable, elevation):  
+
+    def forward(self, variable, elevation):
         # Check input resolution
-        assert variable.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape, got {variable.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape, got {variable.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -70,23 +72,24 @@ class UNet(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
-# ---------------------------------------------------------- Batch Normalization 
+
+# ---------------------------------------------------------- Batch Normalization
 class UNet_BN(nn.Module):
     def __init__(self):
         super(UNet_BN, self).__init__()
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256)
@@ -94,10 +97,10 @@ class UNet_BN(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -105,28 +108,29 @@ class UNet_BN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
-    def forward(self, variable, elevation):  
+
+    def forward(self, variable, elevation):
         # Check input resolution
-        assert variable.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -137,7 +141,7 @@ class UNet_BN(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
 
@@ -148,16 +152,16 @@ class UNet_DO(nn.Module):
 
         # Dropout probability
         self.dropout_prob = dropout_prob
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256, dropout_prob=dropout_prob)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512, dropout_prob=dropout_prob)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256, dropout_prob=dropout_prob)
@@ -165,10 +169,10 @@ class UNet_DO(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -176,28 +180,29 @@ class UNet_DO(nn.Module):
             nn.Dropout2d(dropout_prob),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout_prob)
+            nn.Dropout2d(dropout_prob),
         )
-    
-    def forward(self, variable, elevation):  
+
+    def forward(self, variable, elevation):
         # Check input resolution
-        assert variable.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -208,27 +213,27 @@ class UNet_DO(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
 
-# ---------------------------------------------------------- Dropout and Batch Normalization 
+# ---------------------------------------------------------- Dropout and Batch Normalization
 class UNet_DO_BN(nn.Module):
     def __init__(self, dropout_prob=0.3):
         super(UNet_DO_BN, self).__init__()
 
         # Dropout probability
         self.dropout_prob = dropout_prob
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256, dropout_prob=dropout_prob)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512, dropout_prob=dropout_prob)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256, dropout_prob=dropout_prob)
@@ -236,10 +241,10 @@ class UNet_DO_BN(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -249,28 +254,29 @@ class UNet_DO_BN(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout_prob)
+            nn.Dropout2d(dropout_prob),
         )
-    
-    def forward(self, variable, elevation):  
+
+    def forward(self, variable, elevation):
         # Check input resolution
-        assert variable.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -281,7 +287,7 @@ class UNet_DO_BN(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
 
@@ -292,16 +298,16 @@ class UNet_Noise(nn.Module):
 
         # Fixed noise standard deviation (non-trainable)
         self.noise_std = noise_std
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256)
@@ -309,44 +315,45 @@ class UNet_Noise(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
-    def forward(self, variable, elevation): 
+
+    def forward(self, variable, elevation):
         # Apply multiplicative Gaussian noise in training mode
         if self.training and self.noise_std > 0:
             noise = torch.randn_like(variable) * self.noise_std  # Sample noise
             variable_noisy = variable * (1 + noise)  # Multiplicative noise
         else:
             variable_noisy = variable
- 
+
         # Check input resolution
-        assert variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable_noisy, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -357,9 +364,8 @@ class UNet_Noise(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
-        return self.output(d1)
 
+        return self.output(d1)
 
 
 # ---------------------------------------------------------- Noise, Dropout and Batch Normalization
@@ -372,16 +378,16 @@ class UNet_Noise_DO_BN(nn.Module):
 
         # Fixed noise standard deviation (non-trainable)
         self.noise_std = noise_std
-        
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256, dropout_prob=dropout_prob)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512, dropout_prob=dropout_prob)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256, dropout_prob=dropout_prob)
@@ -389,10 +395,10 @@ class UNet_Noise_DO_BN(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
-        
+
     def conv_block(self, in_channels, out_channels, dropout_prob=0):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -402,35 +408,36 @@ class UNet_Noise_DO_BN(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout_prob)
+            nn.Dropout2d(dropout_prob),
         )
-    
-    def forward(self, variable, elevation): 
+
+    def forward(self, variable, elevation):
         # Apply multiplicative Gaussian noise in training mode
         if self.training and self.noise_std > 0:
             noise = torch.randn_like(variable) * self.noise_std  # Sample noise
             variable_noisy = variable * (1 + noise)  # Multiplicative noise
         else:
             variable_noisy = variable
- 
+
         # Check input resolution
-        assert variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable_noisy, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -441,7 +448,7 @@ class UNet_Noise_DO_BN(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
 
@@ -451,17 +458,19 @@ class UNet_Trainable_Noise(nn.Module):
         super(UNet_Trainable_Noise, self).__init__()
 
         # Input noise parameters (learned)
-        self.input_log_var = nn.Parameter(torch.zeros(1))  # log variance for input noise
-        
+        self.input_log_var = nn.Parameter(
+            torch.zeros(1)
+        )  # log variance for input noise
+
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
         self.pool = nn.MaxPool2d(2)
         self.encoder2 = self.conv_block(64, 128)
         self.encoder3 = self.conv_block(128, 256)
-        
+
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
-        
+
         # Define decoding layers
         self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.decoder3 = self.conv_block(512, 256)
@@ -469,7 +478,7 @@ class UNet_Trainable_Noise(nn.Module):
         self.decoder2 = self.conv_block(256, 128)
         self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder1 = self.conv_block(128, 64)
-        
+
         # Final output layer
         self.output = nn.Conv2d(64, 1, kernel_size=1)
 
@@ -478,36 +487,39 @@ class UNet_Trainable_Noise(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
-    def forward(self, variable, elevation): 
+
+    def forward(self, variable, elevation):
         # Apply multiplicative Gaussian noise in training mode
         if self.training:
-            input_std = torch.exp(0.5 * self.input_log_var)  # Compute std from log variance
+            input_std = torch.exp(
+                0.5 * self.input_log_var
+            )  # Compute std from log variance
             noise = torch.randn_like(variable) * input_std  # Sample noise
             variable_noisy = variable * (1 + noise)  # Multiplicative noise
         else:
             variable_noisy = variable
- 
+
         # Check input resolution
-        assert variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128), \
-            f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
-        
+        assert (
+            variable_noisy.shape[2:] == elevation.shape[2:] == (128, 128)
+        ), f"Inputs must be same shape (128x128), got {variable_noisy.shape[2:]} and {elevation.shape[2:]}"
+
         # Concatenate input channels
         x = torch.cat((variable_noisy, elevation), dim=1)  # Shape: [B, 2, 128, 128]
 
         # Encoder
         e1 = self.encoder1(x)
-        p1 = self.pool(e1)    
+        p1 = self.pool(e1)
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
-        
+
         # Bottleneck
         b = self.bottleneck(p3)
-        
+
         # Decoder
         d3 = self.upconv3(b)
         d3 = torch.cat((d3, e3), dim=1)
@@ -518,49 +530,56 @@ class UNet_Trainable_Noise(nn.Module):
         d1 = self.upconv1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
-        
+
         return self.output(d1)
 
 
 # ---------------------------------------------------------- MMD
 
-def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
+
+def compute_mmd(source_features, target_features, kernel="rbf", sigma=None):
     """
     Computes the Maximum Mean Discrepancy (MMD) between source and target features.
-    
+
     Args:
         source_features: Tensor of shape (N, D) from the source domain.
         target_features: Tensor of shape (M, D) from the target domain.
         kernel: Kernel type ('rbf' or 'linear').
         sigma: Bandwidth for the RBF kernel (if None, it is estimated using median heuristic).
-        
+
     Returns:
         MMD loss (scalar)
     """
-    
+
     def rbf_kernel(X, Y, sigma):
         XX = torch.sum(X**2, dim=1, keepdim=True)  # (N, 1)
         YY = torch.sum(Y**2, dim=1, keepdim=True)  # (M, 1)
         XY = torch.matmul(X, Y.t())  # (N, M)
         dists = torch.clamp(XX - 2 * XY + YY.t(), min=0.0)  # Squared L2 distance
-        return torch.exp(-dists / (2 * sigma ** 2))  # RBF kernel
+        return torch.exp(-dists / (2 * sigma**2))  # RBF kernel
 
     # Normalize features to prevent large magnitude issues
-    source_features = source_features / (source_features.norm(dim=1, keepdim=True) + 1e-6)
-    target_features = target_features / (target_features.norm(dim=1, keepdim=True) + 1e-6)
+    source_features = source_features / (
+        source_features.norm(dim=1, keepdim=True) + 1e-6
+    )
+    target_features = target_features / (
+        target_features.norm(dim=1, keepdim=True) + 1e-6
+    )
 
     # Compute adaptive sigma if not provided
     if sigma is None:
-        pairwise_dists = torch.norm(source_features[:, None] - target_features, dim=2, p=2)
+        pairwise_dists = torch.norm(
+            source_features[:, None] - target_features, dim=2, p=2
+        )
         sigma = torch.median(pairwise_dists).detach().item()
         sigma = max(sigma, 1e-3)  # Avoid very small sigma
 
     # Compute kernel matrices
-    if kernel == 'rbf':
+    if kernel == "rbf":
         K_ss = rbf_kernel(source_features, source_features, sigma)
         K_tt = rbf_kernel(target_features, target_features, sigma)
         K_st = rbf_kernel(source_features, target_features, sigma)
-    elif kernel == 'linear':
+    elif kernel == "linear":
         K_ss = torch.matmul(source_features, source_features.t())
         K_tt = torch.matmul(target_features, target_features.t())
         K_st = torch.matmul(source_features, target_features.t())
@@ -572,10 +591,11 @@ def compute_mmd(source_features, target_features, kernel='rbf', sigma=None):
 
     return mmd_loss
 
+
 class UNet_MMD(nn.Module):
     def __init__(self):
         super(UNet_MMD, self).__init__()
-        
+
         # Encoder
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation
         self.pool = nn.MaxPool2d(2)
@@ -600,7 +620,7 @@ class UNet_MMD(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, variable, elevation, target_variable=None, target_elevation=None):
