@@ -24,9 +24,7 @@ def compute_elev_stats(datasets):
     return all_elevs.mean().item(), all_elevs.std().item()
 
 
-def load_or_compute_stats(train_clusters, stats_dir):
-    os.makedirs(stats_dir, exist_ok=True)
-    stats_path = os.path.join(stats_dir, "stats.json")
+def load_or_compute_stats(train_clusters, stats_path):
 
     if os.path.exists(stats_path):
         LOGGER.info(f"Loading normalization stats from {stats_path}")
@@ -34,6 +32,12 @@ def load_or_compute_stats(train_clusters, stats_dir):
             stats = json.load(f)
     else:
         LOGGER.info("Computing normalization statistics...")
+        LOGGER.info(
+            "*** WARNING *** "
+            "If you see this during evaluation there might be something wrong. "
+            "Check that the statistics you are computing corresponds to the ones used during training! "
+            "*** ------- *** "
+        )
         temp_mean, temp_std = compute_temp_stats(train_clusters)
         elev_mean, elev_std = compute_elev_stats(train_clusters)
         stats = {
@@ -56,11 +60,11 @@ def get_single_cluster_dataloader(
     num_workers=1,
     use_theta_e=False,
     device="cpu",
-    stats_dir="normalization_stats",
+    stats_path="single_normalization_stats.json",
     augment=False,
 ):
     """
-    Load val/test dataloaders for a single cluster using provided normalization stats.
+    Load test dataloaders for a single cluster using provided normalization stats.
 
     Args:
         data_path: path to cluster data
@@ -75,20 +79,23 @@ def get_single_cluster_dataloader(
     LOGGER.info(f"DATALOADER: Loading single cluster dataloaders for '{cluster_name}'")
 
     # Preload raw datasets to compute statistics
-    raw_train_clusters = SingleVariableDataset_v8(
-        os.path.join(data_path, cluster_name),
-        elev_dir,
-        split="train",
-        use_theta_e=use_theta_e,
-        device=device,
-        augment=False,
-    )
+    raw_train_clusters = [
+        SingleVariableDataset_v8(
+            os.path.join(data_path, cluster_name),
+            elev_dir,
+            split="train",
+            use_theta_e=use_theta_e,
+            device=device,
+            augment=False,
+        )
+    ]
 
     LOGGER.info(
-        f"DATALOADER: Computing normalization statistics for {len(raw_train_clusters)} clusters..."
+        f"DATALOADER: Computing/loading normalization statistics for {len(raw_train_clusters[0])} images..."
     )
     stats = load_or_compute_stats(
-        raw_train_clusters, stats_dir=os.path.join(data_path, cluster_name, stats_dir)
+        raw_train_clusters,
+        stats_path=os.path.join(data_path, cluster_name, stats_path),
     )
     LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
 
@@ -136,9 +143,9 @@ def get_single_cluster_dataloader(
 
     LOGGER.info(
         f"DATALOADER: Done. \
-            \nTrain size: {len(train_dataset)} \
-            \nVal size: {len(val_dataset)} \
-            \nTest size: {len(test_dataset)}"
+            Train size: {len(train_dataset)} \
+            Val size: {len(val_dataset)} \
+            Test size: {len(test_dataset)}"
     )
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
@@ -152,7 +159,7 @@ def get_clusters_dataloader(
     num_workers=1,
     use_theta_e=False,
     device="cpu",
-    stats_dir="normalization_stats",
+    stats_path="crossval_normalization_stats.json",
     augment=False,
 ):
     """
@@ -182,7 +189,7 @@ def get_clusters_dataloader(
     )
     stats = load_or_compute_stats(
         raw_train_clusters,
-        stats_dir=os.path.join(data_path, excluded_cluster, stats_dir),
+        stats_path=os.path.join(data_path, excluded_cluster, stats_path),
     )
     LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
 
@@ -250,9 +257,9 @@ def get_clusters_dataloader(
 
     LOGGER.info(
         f"DATALOADER: Done. \
-            \nTrain size: {len(train_dataset)} \
-            \nVal size: {len(val_dataset)} \
-            \nTest size: {len(test_dataset)}"
+            Train size: {len(train_dataset)} \
+            Val size: {len(val_dataset)} \
+            Test size: {len(test_dataset)}"
     )
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
@@ -266,7 +273,7 @@ def get_domain_adaptation_dataloaders(
     num_workers=1,
     use_theta_e=False,
     device="cpu",
-    stats_dir="normalization_stats",
+    stats_path="da_normalization_stats.json",
     augment=False,
 ):
     """
@@ -301,7 +308,7 @@ def get_domain_adaptation_dataloaders(
     )
     stats = load_or_compute_stats(
         raw_source_train_clusters,
-        stats_dir=os.path.join(data_path, target_cluster, stats_dir),
+        stats_path=os.path.join(data_path, target_cluster, stats_path),
     )
     LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
 

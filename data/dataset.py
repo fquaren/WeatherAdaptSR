@@ -37,9 +37,7 @@ class SingleVariableDataset_v8(Dataset):
         """
         self.device = device
         self.split = split
-        self.augment = (
-            augment if split == "train" else False
-        )  # Only augment train split
+        self.augment = augment
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         input_path = os.path.join(
@@ -80,6 +78,10 @@ class SingleVariableDataset_v8(Dataset):
         # Normalize input (temperature)
         if self.temp_mean is not None and self.temp_std is not None:
             input_sample = (input_sample - self.temp_mean) / self.temp_std
+
+        # Normalize target (temperature)
+        if self.temp_mean is not None and self.temp_std is not None:
+            target_sample = (target_sample - self.temp_mean) / self.temp_std
 
         # Load and normalize elevation
         if location_name not in self.elev_cache:

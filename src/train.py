@@ -224,10 +224,13 @@ def train_model(
         val_losses.append(val_loss)
 
         # Compute the rolling average of the val loss
-        if len(val_losses) > rolling_mean_window:
-            rolling_mean_val_loss = np.mean(val_losses[-rolling_mean_window:])
-        else:
-            rolling_mean_val_loss = np.mean(val_losses)
+        if rolling_mean_threshold is not None:
+            if len(val_losses) > rolling_mean_window:
+                rolling_mean_val_loss = np.mean(val_losses[-rolling_mean_window:])
+            else:
+                rolling_mean_val_loss = np.mean(val_losses)
+            if rolling_mean_val_loss < rolling_mean_threshold:
+                early_stop_counter += 1
 
         # Save the latest best model snapshot
         if val_loss < best_val_loss:
@@ -245,7 +248,9 @@ def train_model(
                 },
                 snapshot_path,
             )
-        if rolling_mean_val_loss < rolling_mean_threshold:
+            early_stop_counter = 0
+        else:
+            # Stop when n=patience consecutive epochs < best_val_loss
             early_stop_counter += 1
 
         # Logging
@@ -279,7 +284,7 @@ def train_model(
 
         torch.cuda.empty_cache()
 
-    LOGGER.info("TRAINING: Training complete! Best model saved as:", snapshot_path)
+    LOGGER.info(f"TRAINING: Training complete! Best model saved as: {snapshot_path}")
 
     # Save losses data
     np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))

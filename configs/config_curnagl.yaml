@@ -1,11 +1,11 @@
 experiment:
-  name: "cross-val-v8" # "cross-val-v8"
+  name: "single-v2" # "cross-val-v8"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
 
 paths:
   local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
-  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/new_clusters"
+  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v3"
   elev_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"
   clusters: [
     "cluster_0",
@@ -24,7 +24,7 @@ paths:
   single_cluster: "cluster_0"
 
 optimization:
-  num_epochs: 30  # 0 if not optimizing, 10 if optimizing
+  num_epochs: 50  # 0 if not optimizing, 30 if optimizing
   num_trials: 5
 
 training:
@@ -37,11 +37,11 @@ training:
   early_stopping: True
   early_stopping_params:
     patience: 5
-    rolling_mean_threshold: 0.005
+    rolling_mean_threshold: 5
     rolling_mean_window: 5
   criterion: MSELoss
   optimizer: Adam
-  scheduler: ReduceLROnPlateau  # CosineAnnealingLR (T_max: 200, eta_min: 0.0000001)
+  scheduler: ReduceLROnPlateau
   scheduler_params:
     mode: 'min'  # 'min' for MSELoss, 'max' for accuracy
     factor: 0.1

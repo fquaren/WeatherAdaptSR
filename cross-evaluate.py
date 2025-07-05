@@ -9,8 +9,40 @@ import gc
 import logging
 from data.dataloader import get_single_cluster_dataloader
 from src.models import unet
+from src.logger import setup_logger
 
-LOGGER = logging.getLogger("experiment")
+
+def spectral_nrmse_from_fields(observation, forecast):
+    """
+    Compute normalized RMSE between the radially averaged power spectra
+    of observation and forecast fields.
+
+    Returns:
+        nrmse: float
+    """
+
+    def radial_power(field):
+        # Remove mean
+        field = field - np.mean(field)
+        # 2D FFT and shift
+        ps = np.abs(np.fft.fftshift(np.fft.fft2(field))) ** 2
+        # Radial average
+        ny, nx = ps.shape
+        y, x = np.indices((ny, nx))
+        r = np.sqrt((x - nx // 2) ** 2 + (y - ny // 2) ** 2).astype(np.int32)
+        tbin = np.bincount(r.ravel(), ps.ravel())
+        nr = np.bincount(r.ravel())
+        return tbin / (nr + 1e-8)
+
+    radial_obs = radial_power(observation)
+    radial_pred = radial_power(forecast)
+
+    # NRMSE
+    num = np.sqrt(np.sum((radial_obs - radial_pred) ** 2))
+    denom = np.sqrt(np.sum(radial_obs**2)) + 1e-8
+    nrmse = num / denom
+
+    return nrmse
 
 
 def compute_ssim(x, y, C1=0.01**2, C2=0.03**2):
@@ -166,7 +198,7 @@ def plot_results(
     def plot_subset(indices, title_prefix, filename_suffix):
         fig, axes = plt.subplots(5, 4, figsize=(10, 15))
         plt.suptitle(
-            f"{title_prefix} 5 - Mean Test Loss for model eval on {eval_on_cluster}\n"
+            f"{title_prefix} 5 - Mean Test Loss for model trained excluding {eval_on_cluster}\n"
             f"and tested on {cluster_name}: {test_losses.mean():.4f}"
         )
 
@@ -175,10 +207,6 @@ def plot_results(
             pred_img = predictions[idx][0]
             target_img = targets[idx][0]
             elev_img = elevations[idx][0]
-
-            # Compute common vmin/vmax for input/prediction/target
-            row_min = np.min([input_img.min(), pred_img.min(), target_img.min()])
-            row_max = np.max([input_img.max(), pred_img.max(), target_img.max()])
 
             images = [input_img, pred_img, target_img, elev_img]
             cmaps = ["coolwarm", "coolwarm", "coolwarm", "viridis"]
@@ -191,7 +219,7 @@ def plot_results(
 
             for j, (data, cmap, title) in enumerate(zip(images, cmaps, titles)):
                 if j < 3:
-                    img = axes[i, j].imshow(data, cmap=cmap, vmin=row_min, vmax=row_max)
+                    img = axes[i, j].imshow(data, cmap=cmap)
                 else:
                     img = axes[i, j].imshow(data, cmap=cmap)
 
@@ -216,14 +244,14 @@ def plot_results(
 
 
 def plot_training_metrics(
-    save_path, evaluation_path, model_architecture, trained_on_label
+    save_path, evaluation_path, model_architecture, trained_on_label, logger
 ):
     # Plot training metrics
     train_losses_path = os.path.join(save_path, "train_losses.npy")
     val_losses_path = os.path.join(save_path, "val_losses.npy")
 
     if not os.path.exists(train_losses_path) or not os.path.exists(val_losses_path):
-        LOGGER.warning(
+        logger.warning(
             f"Training loss files not found in {save_path}. Skipping training metrics plot."
         )
         return
@@ -245,7 +273,7 @@ def plot_training_metrics(
 
 
 def plot_eval_matrix(
-    mean_eval_matrix, cluster_names, model_architecture, metric, save_path
+    mean_eval_matrix, cluster_names, model_architecture, metric, save_path, logger
 ):
     """
     Plots the mean test loss matrix for all clusters.
@@ -257,30 +285,35 @@ def plot_eval_matrix(
 
     # 1. Compute the mean of the diagonal (same cluster train-test)
     mean_diagonal = np.mean(np.diag(mean_eval_matrix))
+    mean_off_diagonal = np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))
 
     # 2. Compute the mean difference for each column
     sum_differences = []
     for i in range(mean_eval_matrix.shape[1]):
         column_values = mean_eval_matrix[:, i]
-        diff = column_values - column_values[i]  # Difference from the diagonal value
-        diff = np.maximum(diff, 0)  # Apply relu to difference to avoid negative values
+        diff = column_values[i] - column_values  # Difference from the diagonal value
+        # diff = np.maximum(diff, 0)  # Apply relu to difference to avoid negative values
         sum_diff = np.sum(np.delete(diff, i))  # Exclude the diagonal element
         sum_differences.append(sum_diff)
 
     # Convert to a NumPy array for easy handling
     consistency = 1 / (N * (N - 1)) * np.sum(np.array(sum_differences))
 
-    LOGGER.info(f"EVALUATION: Mean diagonal {metric}: {mean_diagonal}")
-    LOGGER.info(
-        f"EVALUATION: Mean non-diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))}"
+    logger.info(f"EVALUATION: Mean diagonal {metric}: {mean_diagonal}")
+    logger.info(f"EVALUATION: Mean off-diagonal {metric}: {mean_off_diagonal}")
+    logger.info(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
+    logger.info(f"EVALUATION: Consistency metric: {consistency}")
+    logger.info(
+        f"EVALUATION: Difference Diag-OffDiag: {
+            mean_diagonal - mean_off_diagonal}"
     )
-    LOGGER.info(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
-    LOGGER.info(f"EVALUATION: Consistency metric: {consistency}")
 
     # Plot mean test loss matrix
+    cmap = "bwr_r" if metric == "SSIM" else "bwr"
     fig, ax = plt.subplots(figsize=(10, 8))
     cax = ax.matshow(
-        mean_eval_matrix, cmap="bwr", vmin=0, vmax=np.max(mean_eval_matrix)
+        mean_eval_matrix,
+        cmap=cmap,
     )
     plt.colorbar(cax)
     ax.set_xticks(np.arange(N))
@@ -291,9 +324,11 @@ def plot_eval_matrix(
     plt.ylabel("Model")
     plt.title(
         f"Model: {model_architecture}\n"
+        f"Mean Test Loss Matrix {metric}: {np.mean(mean_eval_matrix):.6f},\n"
         f"Mean Diagonal {metric}: {mean_diagonal:.6f},\n"
         f"Mean Non-Diagonal {metric}: {np.mean(np.delete(mean_eval_matrix, np.diag_indices(N))):.6f},\n"
-        f"Mean Test Loss Matrix {metric}: {np.mean(mean_eval_matrix):.6f},\n"
+        f"Difference Mean Diag & Mean Non-Diagonal {metric}: {
+            np.mean(mean_eval_matrix) - np.mean(np.delete(mean_eval_matrix, np.diag_indices(N)))},\n"
         f"Consistency: {consistency:.6f}"
     )
     plt.tight_layout()
@@ -327,7 +362,7 @@ def main():
     )
     parser.add_argument(
         "--save_eval",
-        default=False,
+        default=True,
         action="store_true",
         help="Save evaluation results to disk",
     )
@@ -347,7 +382,12 @@ def main():
         raise ValueError(
             "Please provide the path to the model to evaluate using --exp_path"
         )
+
+    LOGGER = setup_logger(exp_path)
     LOGGER.info(f"EVALUATION: Using model path: {exp_path}")
+
+    evaluation_path = os.path.join(exp_path, "evaluation_results")
+    os.makedirs(evaluation_path, exist_ok=True)
 
     # Load config file
     config_path = os.path.join(exp_path, "config.yaml")
@@ -414,7 +454,7 @@ def main():
             )
 
         model_save_path = os.path.join(exp_path, single_cluster_name)
-        model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+        model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
 
         if not os.path.exists(model_state_dict_path):
             LOGGER.error(
@@ -424,7 +464,8 @@ def main():
             return
 
         model = getattr(unet, model_architecture)()
-        model.load_state_dict(torch.load(model_state_dict_path, map_location=device))
+        checkpoint = torch.load(model_state_dict_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
         model.to(device)
         model.eval()
 
@@ -438,10 +479,12 @@ def main():
             evaluation_save_path,
             model_architecture,
             single_cluster_name,
+            LOGGER,
         )
 
         mean_eval_losses = []
         mean_eval_ssims = []
+        mean_eval_snrmse = []
 
         for j, test_cluster in enumerate(cluster_names):
             LOGGER.info(
@@ -458,8 +501,6 @@ def main():
                 use_theta_e=config["training"]["use_theta_e"],
                 device="cpu",  # Always load data to CPU first
                 augment=False,  # No augmentation for evaluation
-                shuffle=False,
-                test_only=True,  # Only get the test loader
             )
             test_loader = loaders["test"]
 
@@ -484,8 +525,20 @@ def main():
                         torch.from_numpy(results["targets"][k, 0]),
                     ).item()
                 )
+
+            # Compute SSIM
+            snrmse_scores = []
+            for k in range(results["predictions"].shape[0]):
+                snrmse_scores.append(
+                    spectral_nrmse_from_fields(
+                        results["predictions"][k, 0, :, :],
+                        results["targets"][k, 0, :, :],
+                    )
+                )
+
             mean_ssim = np.mean(ssim_scores)
             mean_eval_ssims.append(mean_ssim)
+            mean_eval_snrmse.append(snrmse_scores)
 
             LOGGER.info(
                 f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
@@ -520,7 +573,7 @@ def main():
         for idx, cluster in enumerate(cluster_names):
             LOGGER.info(
                 f"  Tested on {cluster} | Mean MSE Loss: {mean_eval_losses[idx]:.4f} \
-                    | Mean SSIM: {mean_eval_ssims[idx]:.4f}"
+                    | Mean SSIM: {mean_eval_ssims[idx]:.4f} | Mean rNRMSE: {mean_eval_snrmse[idx]:.4f} "
             )
         LOGGER.info(
             f"Overall Average MSE Loss across all test clusters: {np.mean(mean_eval_losses):.4f}"
@@ -528,15 +581,19 @@ def main():
         LOGGER.info(
             f"Overall Average SSIM across all test clusters: {np.mean(mean_eval_ssims):.4f}"
         )
+        LOGGER.info(
+            f"Overall Average sNRMSE across all test clusters: {np.mean(mean_eval_snrmse):.4f}"
+        )
 
     elif method == "cross-val":
         LOGGER.info("EVALUATION: Starting cross-validation evaluation...")
         mean_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
         ssim_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+        snrmse_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
 
         for i, excluded_cluster in enumerate(cluster_names):
             model_save_path = os.path.join(exp_path, excluded_cluster)
-            model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+            model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
 
             if not os.path.exists(model_state_dict_path):
                 LOGGER.warning(
@@ -546,9 +603,8 @@ def main():
                 continue
 
             model = getattr(unet, model_architecture)()
-            model.load_state_dict(
-                torch.load(model_state_dict_path, map_location=device)
-            )
+            checkpoint = torch.load(model_state_dict_path, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
             model.to(device)
             model.eval()
 
@@ -562,6 +618,7 @@ def main():
                 evaluation_save_path,
                 model_architecture,
                 excluded_cluster,
+                LOGGER,
             )
 
             for j, test_cluster in enumerate(cluster_names):
@@ -574,14 +631,13 @@ def main():
                 loaders = get_single_cluster_dataloader(
                     data_path=data_path,
                     elev_dir=elev_dir,
-                    cluster=test_cluster,
+                    cluster_name=test_cluster,
                     batch_size=config["training"]["batch_size"],
                     num_workers=num_workers,
                     use_theta_e=config["training"]["use_theta_e"],
-                    device="cpu",  # Always load data to CPU first
-                    augment=False,  # No augmentation for evaluation
-                    shuffle=False,
-                    test_only=True,  # Only get the test loader
+                    device="cpu",
+                    stats_path="crossval_normalization_stats.json",
+                    augment=False,
                 )
                 test_loader = loaders["test"]
 
@@ -600,11 +656,25 @@ def main():
                     )
                 ssim_eval_matrix[i, j] = np.mean(ssim_scores)
 
+                # Compute normalized spectral error
+                snrmse_scores = []
+                for k in range(results["predictions"].shape[0]):
+                    snrmse_scores.append(
+                        spectral_nrmse_from_fields(
+                            results["predictions"][k, 0, :, :],
+                            results["targets"][k, 0, :, :],
+                        )
+                    )
+                snrmse_eval_matrix[i, j] = np.mean(snrmse_scores)
+
                 LOGGER.info(
                     f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
                 )
                 LOGGER.info(
                     f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
+                )
+                LOGGER.info(
+                    f"EVALUATION: Mean sNRMSE for {test_cluster}: {snrmse_eval_matrix[i, j]:.4f}"
                 )
 
                 if save_eval:
@@ -636,8 +706,27 @@ def main():
             mean_eval_matrix,
             cluster_names,
             model_architecture,
-            "MSE Loss",
+            "MSE",
             os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
+        )
+
+        def standardize(matrix):
+            # Standardize each row between 0 and 1
+            row_min = matrix.min(axis=1, keepdims=True)
+            row_max = matrix.max(axis=1, keepdims=True)
+            denominator = row_max - row_min
+            # To avoid division by zero if all elements in the row are identical
+            denominator[denominator == 0] = 1
+            return (matrix - row_min) / denominator
+
+        plot_eval_matrix(
+            standardize(mean_eval_matrix),
+            cluster_names,
+            model_architecture,
+            "standardized_MSE",
+            os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
         )
         plot_eval_matrix(
             ssim_eval_matrix,
@@ -645,6 +734,31 @@ def main():
             model_architecture,
             "SSIM",
             os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
+        )
+        plot_eval_matrix(
+            standardize(ssim_eval_matrix),
+            cluster_names,
+            model_architecture,
+            "standardized_SSIM",
+            os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
+        )
+        plot_eval_matrix(
+            snrmse_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "sNRMSE",
+            os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
+        )
+        plot_eval_matrix(
+            standardize(snrmse_eval_matrix),
+            cluster_names,
+            model_architecture,
+            "standardized_sNRMSE",
+            os.path.join(exp_path, "evaluation_results"),
+            LOGGER,
         )
 
     elif method == "all":
@@ -653,11 +767,12 @@ def main():
             (1, len(cluster_names))
         )  # Single model trained on all, evaluated on each
         ssim_eval_matrix = np.zeros((1, len(cluster_names)))
+        snrmse_eval_matrix = np.zeros((1, len(cluster_names)))
 
         model_save_path = os.path.join(
             exp_path, "all_clusters"
         )  # Assuming "all_clusters" is the save directory for the 'all' method
-        model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+        model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
 
         if not os.path.exists(model_state_dict_path):
             LOGGER.error(
@@ -666,7 +781,8 @@ def main():
             return
 
         model = getattr(unet, model_architecture)()
-        model.load_state_dict(torch.load(model_state_dict_path, map_location=device))
+        checkpoint = torch.load(model_state_dict_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
         model.to(device)
         model.eval()
 
@@ -676,7 +792,11 @@ def main():
         )  # Distinct folder for this model's evaluation
         os.makedirs(evaluation_save_path, exist_ok=True)
         plot_training_metrics(
-            model_save_path, evaluation_save_path, model_architecture, "all_clusters"
+            model_save_path,
+            evaluation_save_path,
+            model_architecture,
+            "all_clusters",
+            LOGGER,
         )
 
         for j, test_cluster in enumerate(cluster_names):
@@ -694,9 +814,8 @@ def main():
                 num_workers=num_workers,
                 use_theta_e=config["training"]["use_theta_e"],
                 device="cpu",  # Always load data to CPU first
+                stats_path="crossval_normalization_stats.json",
                 augment=False,  # No augmentation for evaluation
-                shuffle=False,
-                test_only=True,  # Only get the test loader
             )
             test_loader = loaders["test"]
 
@@ -717,11 +836,25 @@ def main():
                 )
             ssim_eval_matrix[0, j] = np.mean(ssim_scores)  # Store in the first row
 
+            # Compute sNRMSE
+            snrmse_scores = []
+            for k in range(results["predictions"].shape[0]):
+                snrmse_scores.append(
+                    spectral_nrmse_from_fields(
+                        results["predictions"][k, 0, :, :],
+                        results["targets"][k, 0, :, :],
+                    )
+                )
+            snrmse_eval_matrix[0, j] = np.mean(snrmse_scores)  # Store in the first row
+
             LOGGER.info(
                 f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
             )
             LOGGER.info(
                 f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[0, j]:.4f}"
+            )
+            LOGGER.info(
+                f"EVALUATION: Mean sNRMSE for {test_cluster}: {snrmse_eval_matrix[0, j]:.4f}"
             )
 
             if save_eval:
@@ -760,10 +893,11 @@ def main():
         LOGGER.info("EVALUATION: Starting MMD evaluation...")
         mean_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
         ssim_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
+        snrmse_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
 
         for i, excluded_cluster in enumerate(cluster_names):
             model_save_path = os.path.join(exp_path, excluded_cluster)
-            model_state_dict_path = os.path.join(model_save_path, "best_model.pth")
+            model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
 
             if not os.path.exists(model_state_dict_path):
                 LOGGER.warning(
@@ -773,9 +907,8 @@ def main():
                 continue
 
             model = getattr(unet, model_architecture)()
-            model.load_state_dict(
-                torch.load(model_state_dict_path, map_location=device)
-            )
+            checkpoint = torch.load(model_state_dict_path, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
             model.to(device)
             model.eval()
 
@@ -789,6 +922,7 @@ def main():
                 evaluation_save_path,
                 model_architecture,
                 excluded_cluster,
+                LOGGER,
             )
 
             for j, test_cluster in enumerate(cluster_names):
@@ -806,9 +940,8 @@ def main():
                     num_workers=num_workers,
                     use_theta_e=config["training"]["use_theta_e"],
                     device="cpu",  # Always load data to CPU first
+                    stats_path="da_normalization_stats.json",
                     augment=False,  # No augmentation for evaluation
-                    shuffle=False,
-                    test_only=True,  # Only get the test loader
                 )
                 test_loader = loaders["test"]
 
@@ -827,11 +960,25 @@ def main():
                     )
                 ssim_eval_matrix[i, j] = np.mean(ssim_scores)
 
+                # Compute sNRMSE
+                snrmse_scores = []
+                for k in range(results["predictions"].shape[0]):
+                    snrmse_scores.append(
+                        spectral_nrmse_from_fields(
+                            results["predictions"][k, 0, :, :],
+                            results["targets"][k, 0, :, :],
+                        )
+                    )
+                snrmse_eval_matrix[0, j] = np.mean(snrmse_scores)
+
                 LOGGER.info(
                     f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
                 )
                 LOGGER.info(
                     f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
+                )
+                LOGGER.info(
+                    f"EVALUATION: Mean sNRMSE for {test_cluster}: {snrmse_eval_matrix[i, j]:.4f}"
                 )
 
                 if save_eval:
@@ -863,15 +1010,25 @@ def main():
             mean_eval_matrix,
             cluster_names,
             model_architecture,
-            "MSE Loss",
-            os.path.join(exp_path, "evaluation_results"),
+            "MSE",
+            evaluation_save_path,
+            LOGGER,
         )
         plot_eval_matrix(
             ssim_eval_matrix,
             cluster_names,
             model_architecture,
             "SSIM",
-            os.path.join(exp_path, "evaluation_results"),
+            evaluation_save_path,
+            LOGGER,
+        )
+        plot_eval_matrix(
+            ssim_eval_matrix,
+            cluster_names,
+            model_architecture,
+            "sNRMSE",
+            evaluation_save_path,
+            LOGGER,
         )
 
     else:

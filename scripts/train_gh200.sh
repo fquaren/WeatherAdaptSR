@@ -19,27 +19,22 @@
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet" "UNet_DO_BN" "UNet_Noise" "UNet_MMD")
-methods=("cross-val" "cross-val" "cross-val" "mmd")
-# exp_dir="/scratch/fquareng/experiments/cross-val-v8"
-# resume=("$exp_dir/1k2x" "$exp_dir/2q9s" "$exp_dir/sfgs" "$exp_dir/4ntt")
+models=("UNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
+methods=("single") # "cross-val" "cross-val" "mmd")
+exp_dir="/scratch/fquareng/experiments/cross-val-v8"
+# resume=("$exp_dir/oi1n_2")
+    # exp="${resume[$i]}"
+        # --resume "$exp"
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"
     method="${methods[$i]}"
-    (
-        exp=$(singularity exec --nv "$container_path" \
-            python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
-            --model "$model" \
-            --method "$method")
+    
+    singularity exec --nv "$container_path" \
+        python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
+        --model "$model" \
+        --method "$method" \
 
-        singularity exec --nv "$container_path" \
-            python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py \
-            --device "cuda" \
-            --model "$model" \
-            --exp_path "$exp" \
-            --method "$method"
-    ) &
 done
 wait
 

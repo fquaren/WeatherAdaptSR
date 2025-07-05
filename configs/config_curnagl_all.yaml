@@ -5,7 +5,7 @@ experiment:
 
 paths:
   local_dir: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
-  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/new_clusters"
+  data_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v3"
   elev_path: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"
   clusters: [
     "cluster_0",

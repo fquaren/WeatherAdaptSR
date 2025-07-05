@@ -12,8 +12,8 @@ class ExperimentIDFilter(logging.Filter):
         return True
 
 
-def setup_logger(output_dir, exp_id, name="experiment"):
-    log_file = os.path.join(output_dir, f"{exp_id}.log")
+def setup_logger(output_dir, name="experiment"):
+    log_file = os.path.join(output_dir, "logging.log")
 
     # Set format to include experiment ID
     log_format = "%(asctime)s [%(levelname)s] [%(exp_id)s] %(message)s"
@@ -28,6 +28,7 @@ def setup_logger(output_dir, exp_id, name="experiment"):
     stream_handler.setFormatter(formatter)
 
     # Add experiment ID filter to both handlers
+    exp_id = os.path.basename(os.path.normpath(output_dir))
     exp_filter = ExperimentIDFilter(exp_id)
     file_handler.addFilter(exp_filter)
     stream_handler.addFilter(exp_filter)

@@ -185,9 +185,6 @@ def preprocess_and_save(input_dir, output_dir, split="train", train_stats=None):
         normalized = normalize(arr, stats)
         np.save(os.path.join(output_dir, f"{split}_{key}_normalized.npy"), normalized)
 
-    with open(os.path.join(output_dir, f"{split}_scaling_metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
-
     print(f"[✓] Preprocessing complete for '{split}'. Files saved to '{output_dir}'.")
 
 
@@ -251,8 +248,7 @@ def main():
         old_data_dir,
         "1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12",
     )
-    save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/new_clusters"
-    normalized_root = os.path.join(save_dir, "normalized_data")
+    save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v3"
 
     cluster_splits = get_file_splits_for_all_clusters(input_dir, target_dir)
 
@@ -269,28 +265,24 @@ def main():
             )
 
         cluster_raw_dir = os.path.join(save_dir, cluster_name)
-        cluster_norm_dir = os.path.join(normalized_root, cluster_name)
-        os.makedirs(cluster_norm_dir, exist_ok=True)
 
-        # train_stats_path = os.path.join(cluster_norm_dir, "train_scaling_metadata.json")
-        # preprocess_and_save(
-        #     input_dir=cluster_raw_dir,
-        #     output_dir=cluster_norm_dir,
-        #     split="train"
-        # )
+        train_stats_path = os.path.join(cluster_raw_dir, "train_scaling_metadata.json")
+        preprocess_and_save(
+            input_dir=cluster_raw_dir, output_dir=cluster_raw_dir, split="train"
+        )
 
-        # with open(train_stats_path) as f:
-        #     train_stats = json.load(f)
+        with open(train_stats_path) as f:
+            train_stats = json.load(f)
 
-        # for split in ["val", "test"]:
-        #     preprocess_and_save(
-        #         input_dir=cluster_raw_dir,
-        #         output_dir=cluster_norm_dir,
-        #         split=split,
-        #         train_stats=train_stats
-        #     )
+        for split in ["val", "test"]:
+            preprocess_and_save(
+                input_dir=cluster_raw_dir,
+                output_dir=cluster_raw_dir,
+                split=split,
+                train_stats=train_stats,
+            )
 
-        # print(f"[✓] Done with {cluster_name}")
+        print(f"[✓] Done with {cluster_name}")
 
         # Interpolate after normalization
         for split in ["train", "val", "test"]:
