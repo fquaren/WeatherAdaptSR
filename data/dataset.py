@@ -41,7 +41,7 @@ class SingleVariableDataset_v8(Dataset):
         self.suffix = "theta_e" if use_theta_e else "T_2M"
 
         input_path = os.path.join(
-            data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy"
+            data_dir, f"{split}_{self.suffix}_input_interp16x_nn.npy"
         )
         target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target.npy")
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")

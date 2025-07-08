@@ -98,7 +98,7 @@ def main():
             file.write(f"EXPERIMENT_START_TIME: {start_time}\n")
             file.write(f"EXPERIMENT_MODEL: {model_name}\n")
     else:
-        if resume_exp:
+        if os.path.isdir(resume_exp):
             print(
                 f"EXP: Found experiment at {resume_exp} already exists. Resuming training."
             )

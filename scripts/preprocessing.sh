@@ -15,4 +15,4 @@
 #SBATCH --time 05:00:00
 
 source /users/fquareng/.bashrc
-python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing.py
+python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_v1.py

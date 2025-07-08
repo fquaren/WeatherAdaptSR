@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 import json
 from scipy.ndimage import zoom
+import concurrent.futures
 
 
 def _extract_location_time(filename):
@@ -206,7 +207,7 @@ def interpolate_temperature_data(
     """
 
     # input_fname = f"{split}_{var}_input_normalized.npy"
-    input_fname = f"{split}_{var}_input.npy"
+    input_fname = f"{split}_{var}_input_16.npy"
     input_fpath = os.path.join(input_dir, input_fname)
 
     if not os.path.exists(input_fpath):
@@ -214,8 +215,9 @@ def interpolate_temperature_data(
         return
 
     data = np.load(input_fpath)
-
-    if method == "bilinear":
+    if method == "nn":
+        order = 0
+    elif method == "bilinear":
         order = 1
     elif method == "bicubic":
         order = 3
@@ -238,8 +240,70 @@ def interpolate_temperature_data(
     print(f"[✓] Saved interpolated data to: {out_path}, shape: {upscaled_data.shape}")
 
 
+def downscale_temperature_data(high_res_data, downscaling_factor, method="bilinear"):
+    """
+    Downscales high-resolution temperature data to a lower resolution.
+    This version is parallelized for 3D input arrays (batches of images).
+
+    Parameters:
+        high_res_data (np.ndarray): The high-resolution input data (e.g., target data).
+                                    Expected shape: (N, H, W) or (H, W).
+        downscaling_factor (int): The factor by which to downscale each spatial dimension.
+                                  E.g., 2 for halving resolution, 4 for quartering.
+        method (str): Interpolation method ("bilinear" or "bicubic").
+
+    Returns:
+        np.ndarray: The downscaled low-resolution data.
+    Raises:
+        ValueError: If downscaling_factor is not positive or method is invalid.
+    """
+    if not isinstance(high_res_data, np.ndarray):
+        raise ValueError("Input 'high_res_data' must be a NumPy array.")
+    if downscaling_factor < 0:
+        raise ValueError("Downscaling factor must be a positive integer.")
+
+    elif method == "nn":
+        order = 0
+    elif method == "bilinear":
+        order = 1
+    elif method == "bicubic":
+        order = 3
+    else:
+        raise ValueError("Invalid method. Use 'bilinear' or 'bicubic'.")
+
+    # The zoom factor for scipy.ndimage.zoom is 1/downscaling_factor
+    zoom_factor = 1.0 / downscaling_factor
+
+    # Handle both 2D (H, W) and 3D (N, H, W) arrays
+    if high_res_data.ndim == 2:
+        # For a single 2D image, no parallelization needed
+        downscaled_data = zoom(
+            high_res_data, zoom=(zoom_factor, zoom_factor), order=order
+        )
+    elif high_res_data.ndim == 3:
+        # Parallelize processing for each sample in the batch (N, H, W)
+        # Using ThreadPoolExecutor as scipy.ndimage.zoom releases the GIL
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Map the zoom function to each sample in the batch
+            # zoom_args = (sample, (zoom_factor, zoom_factor), order)
+            # The lambda function creates a callable for each sample with fixed zoom_factor and order
+            downscaled_samples = list(
+                executor.map(
+                    lambda sample: zoom(
+                        sample, zoom=(zoom_factor, zoom_factor), order=order
+                    ),
+                    high_res_data,
+                )
+            )
+        downscaled_data = np.stack(downscaled_samples)
+    else:
+        raise ValueError("Input 'high_res_data' must be 2D (H, W) or 3D (N, H, W).")
+
+    return downscaled_data
+
+
 def main():
-    old_data_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/old/DA/"
+    old_data_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/domain_adaptation/old/DA/"
     input_dir = os.path.join(
         old_data_dir,
         "1d-PS-RELHUM_2M-T_2M_cropped_gridded_clustered_threshold_12_blurred",
@@ -286,11 +350,20 @@ def main():
 
         # Interpolate after normalization
         for split in ["train", "val", "test"]:
+
+            high_res_data = np.load(
+                os.path.join(cluster_raw_dir, f"{split}_T_2M_target.npy")
+            )
+            downscaled_data = downscale_temperature_data(high_res_data, 16, method="nn")
+            out_fname = f"{split}_T_2M_input_16.npy"
+            out_path = os.path.join(cluster_raw_dir, out_fname)
+            np.save(out_path, downscaled_data)
+
             interpolate_temperature_data(
                 input_dir=cluster_raw_dir,
                 split=split,
-                method="bicubic",  # or "bilinear"
-                scale_factor=8,
+                method="nn",  # or "bilinear"
+                scale_factor=16,
             )
 
 

@@ -1,5 +1,5 @@
 experiment:
-  name: "single-v2" # "cross-val-v8"
+  name: "single-10x-x16-nn" # "cross-val-v8"
   save_dir: "/scratch/fquareng/experiments"
   device: "cuda"  # "cuda" or "cpu"
 
@@ -24,7 +24,7 @@ paths:
   single_cluster: "cluster_0"
 
 optimization:
-  num_epochs: 50  # 0 if not optimizing, 30 if optimizing
+  num_epochs: 30  # 0 if not optimizing, 30 if optimizing
   num_trials: 5
 
 training:

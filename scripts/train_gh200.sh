@@ -13,7 +13,7 @@
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --mem 100G
+#SBATCH --mem 250G
 #SBATCH --time 72:00:00
 
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
@@ -21,23 +21,36 @@ container_path="/users/fquareng/singularity/dl_gh200.sif"
 
 models=("UNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
 methods=("single") # "cross-val" "cross-val" "mmd")
-exp_dir="/scratch/fquareng/experiments/cross-val-v8"
-# resume=("$exp_dir/oi1n_2")
-    # exp="${resume[$i]}"
-        # --resume "$exp"
+seeds=(0 1 2 3 4 5 6 7 8 9)
+# exp_dir="/scratch/fquareng/experiments/single-10x"
+# experiments=("$exp_dir/8qd3" "$exp_dir/ahc0" "$exp_dir/epsf" "$exp_dir/h78o" "$exp_dir/jfk5" "$exp_dir/l778" "$exp_dir/oxjb" "$exp_dir/rnjb" "$exp_dir/rrqg" "$exp_dir/x586") # "$exp_dir/" "$exp_dir/" "$exp_dir/")
+# exp="${experiments[$i]}"
+# --resume_exp "$exp" \
 
-for i in "${!models[@]}"; do
-    model="${models[$i]}"
-    method="${methods[$i]}"
+for i in "${!seeds[@]}"; do
+    model="UNet"
+    method="single"
+    seed="${seeds[$i]}"
     
     singularity exec --nv "$container_path" \
         python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
         --model "$model" \
         --method "$method" \
-
+        --seed "$seed" &
 done
 wait
 
+# for i in "${!models[@]}"; do
+#     model="${models[$i]}"
+#     method="${methods[$i]}"
+    
+#     singularity exec --nv "$container_path" \
+#         python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
+#         --model "$model" \
+#         --method "$method" \
+
+# done
+# wait
 
 # ## Train a single model
 # model="UNet_MMD"

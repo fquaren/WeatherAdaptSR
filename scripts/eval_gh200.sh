@@ -19,10 +19,10 @@
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet") # "UNet_DO_BN" "UNet_Noise" "UNet_MMD")
-methods=("cross-val") # "cross-val" "cross-val" "mmd")
-exp_dir="/scratch/fquareng/experiments/single-v2/"
-experiments=("$exp_dir/4dfn") # "$exp_dir/" "$exp_dir/" "$exp_dir/")
+models=("UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet")
+methods=("cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val")
+exp_dir="/scratch/fquareng/experiments/single-10x/"
+experiments=("$exp_dir/8qd3" "$exp_dir/ahc0" "$exp_dir/epsf" "$exp_dir/h78o" "$exp_dir/jfk5" "$exp_dir/l778" "$exp_dir/oxjb" "$exp_dir/rnjb" "$exp_dir/rrqg" "$exp_dir/x586")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"
@@ -33,7 +33,7 @@ for i in "${!models[@]}"; do
         --device "cuda" \
         --model "$model" \
         --exp_path "$exp" \
-        --method "$method"
+        --method "$method" &
 done
 wait
 
