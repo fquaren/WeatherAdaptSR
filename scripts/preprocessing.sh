@@ -10,9 +10,9 @@
 
 #SBATCH --partition cpu
 #SBATCH --nodes 1
-#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 32
 #SBATCH --mem 10G
 #SBATCH --time 05:00:00
 
 source /users/fquareng/.bashrc
-python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_v1.py
+micromamba -n dl run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_v2.py

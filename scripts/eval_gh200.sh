@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name UNet_mix
+#SBATCH --job-name eval_UNet
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -19,10 +19,10 @@
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet" "UNet")
-methods=("cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val" "cross-val")
-exp_dir="/scratch/fquareng/experiments/single-10x/"
-experiments=("$exp_dir/8qd3" "$exp_dir/ahc0" "$exp_dir/epsf" "$exp_dir/h78o" "$exp_dir/jfk5" "$exp_dir/l778" "$exp_dir/oxjb" "$exp_dir/rnjb" "$exp_dir/rrqg" "$exp_dir/x586")
+models=("UNet")
+methods=("cross-val")
+exp_dir="/scratch/fquareng/experiments/single_MAE_fancy" 
+experiments=("$exp_dir/g5ad")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"

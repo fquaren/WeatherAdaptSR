@@ -327,7 +327,7 @@ def plot_images(inputs, targets, elevations, cluster_name, save_path, save=True)
     def plot_subset(indices, mse):
         fig, axes = plt.subplots(5, 4, figsize=(10, 15))
         plt.suptitle(
-            f"Samples from cluster {cluster_name} \nCluster mean MSE: {np.mean(mse):.2f} \nCluster mean SSIM: {np.mean(ssim):.2f}"
+            f"Samples from {cluster_name} \nMean MSE: {np.mean(mse):.2f} \nMean SSIM: {np.mean(ssim):.2f}"
         )
 
         for i, idx in enumerate(indices):
@@ -342,7 +342,7 @@ def plot_images(inputs, targets, elevations, cluster_name, save_path, save=True)
             titles = [
                 "Input",
                 "Target",
-                f"MSE: {np.mean(mse_img):.2f} +- {np.std(mse_img):.2f} \nSSIM: {ssim_img:.2f}",
+                f"MSE: {np.mean(mse_img):.2f} \nSSIM: {ssim_img:.2f}",
                 "Elevation",
             ]
 
@@ -383,35 +383,37 @@ def main():
 
     for cluster in config["paths"]["clusters"]:
         for split in ["train", "val", "test"]:
-            input_data = np.load(
-                os.path.join(
-                    config["paths"]["data_path"],
-                    f"{cluster}/{split}_T_2M_input_interp16x_nn.npy",
-                )
-            )
-            target_data = np.load(
-                os.path.join(
-                    config["paths"]["data_path"],
-                    f"{cluster}/{split}_T_2M_target.npy",
-                )
-            )
-            list_elev_idx = np.load(
-                os.path.join(
-                    config["paths"]["data_path"],
-                    f"{cluster}/{split}_LOCATION.npy",
-                )
-            )
-            elev_patches = []
-            for idx in list_elev_idx:
-                elev_patches.append(
-                    np.load(
-                        os.path.join(
-                            config["paths"]["elev_path"], f"{idx[0]}_{idx[1]}_dem.npy"
-                        )
+            for var in ["T_2M", "TOT_PREC"]:
+                input_data = np.load(
+                    os.path.join(
+                        config["paths"]["data_path"],
+                        f"{cluster}/{split}_{var}_input_interp16x_nn.npy",
                     )
                 )
-            elev_data = np.stack(elev_patches, axis=0)
-            plot_images(input_data, target_data, elev_data, cluster, save_path)
+                target_data = np.load(
+                    os.path.join(
+                        config["paths"]["data_path"],
+                        f"{cluster}/{split}_{var}_target.npy",
+                    )
+                )
+                list_elev_idx = np.load(
+                    os.path.join(
+                        config["paths"]["data_path"],
+                        f"{cluster}/{split}_LOCATION.npy",
+                    )
+                )
+                elev_patches = []
+                for idx in list_elev_idx:
+                    elev_patches.append(
+                        np.load(
+                            os.path.join(
+                                config["paths"]["elev_path"],
+                                f"{idx[0]}_{idx[1]}_dem.npy",
+                            )
+                        )
+                    )
+                elev_data = np.stack(elev_patches, axis=0)
+                plot_images(input_data, target_data, elev_data, cluster, save_path)
 
     return
 

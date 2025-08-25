@@ -12,11 +12,10 @@ class SingleVariableDataset_v8(Dataset):
         data_dir,
         elev_dir,
         split="train",
-        use_theta_e=False,
         device="cuda",
+        use_theta_e=False,
+        vars=None,
         augment=False,
-        temp_mean=None,
-        temp_std=None,
         elev_mean=None,
         elev_std=None,
     ):
@@ -38,32 +37,33 @@ class SingleVariableDataset_v8(Dataset):
         self.device = device
         self.split = split
         self.augment = augment
-        self.suffix = "theta_e" if use_theta_e else "T_2M"
 
-        input_path = os.path.join(
-            data_dir, f"{split}_{self.suffix}_input_interp16x_nn.npy"
-        )
-        target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target.npy")
+        input_list = []
+        target_list = []
+
+        for var in vars:
+            input_path = os.path.join(
+                data_dir, f"{split}_{var}_input_normalized_interp8x_bilinear.npy"
+            )
+            target_path = os.path.join(data_dir, f"{split}_{var}_target_normalized.npy")
+
+            input_data = np.load(input_path)
+            target_data = np.load(target_path)
+
+            input_list.append(torch.tensor(input_data, dtype=torch.float32))
+            target_list.append(torch.tensor(target_data, dtype=torch.float32))
+
+        # Stack along channel dimension (1) so shape becomes [samples, channels, H, W]
+        self.input_data = torch.stack(input_list, dim=1).to(device)
+        self.target_data = torch.stack(target_list, dim=1).to(device)
+
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
-
-        self.input_data = (
-            torch.tensor(np.load(input_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
-        self.target_data = (
-            torch.tensor(np.load(target_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
         self.locations = np.load(location_path)
 
         self.elev_dir = elev_dir
         self.elev_cache = {}
 
-        # Normalization parameters
-        self.temp_mean = temp_mean
-        self.temp_std = temp_std
+        # Normalization elevation
         self.elev_mean = elev_mean
         self.elev_std = elev_std
 
@@ -75,14 +75,6 @@ class SingleVariableDataset_v8(Dataset):
         target_sample = self.target_data[idx]
         location_name = tuple(self.locations[idx])
 
-        # Normalize input (temperature)
-        if self.temp_mean is not None and self.temp_std is not None:
-            input_sample = (input_sample - self.temp_mean) / self.temp_std
-
-        # Normalize target (temperature)
-        if self.temp_mean is not None and self.temp_std is not None:
-            target_sample = (target_sample - self.temp_mean) / self.temp_std
-
         # Load and normalize elevation
         if location_name not in self.elev_cache:
             elev_path = os.path.join(
@@ -92,6 +84,9 @@ class SingleVariableDataset_v8(Dataset):
             elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
             if self.elev_mean is not None and self.elev_std is not None:
                 elev_tensor = (elev_tensor - self.elev_mean) / self.elev_std
+                elev_tensor = np.log(
+                    elev_tensor * 1000 + 1e5
+                )  # As in Harder et al. 2025
             self.elev_cache[location_name] = elev_tensor.to(self.device)
 
         elev_sample = self.elev_cache[location_name]
@@ -102,7 +97,9 @@ class SingleVariableDataset_v8(Dataset):
                 input_sample, elev_sample, target_sample
             )
 
-        return input_sample, elev_sample, target_sample
+        full_input_sample = torch.cat([input_sample, elev_sample], dim=0)
+
+        return full_input_sample, target_sample
 
     def apply_augmentations(self, input_sample, elev_sample, target_sample):
         # Horizontal flip
@@ -123,11 +120,6 @@ class SingleVariableDataset_v8(Dataset):
             input_sample = torch.rot90(input_sample, k, dims=[1, 2])
             elev_sample = torch.rot90(elev_sample, k, dims=[1, 2])
             target_sample = torch.rot90(target_sample, k, dims=[1, 2])
-
-        # # Additive Gaussian noise to input
-        # if random.random() < 0.5:
-        #     noise = torch.randn_like(input_sample) * 0.01
-        #     input_sample += noise
 
         # Multiplicative noise to input
         if random.random() < 0.5:

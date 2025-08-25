@@ -1,4 +1,5 @@
 import torch
+import torchmetrics.image
 import os
 import numpy as np
 import time
@@ -33,7 +34,12 @@ def objective_mmd(
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(
         optimizer, **config["training"]["scheduler_params"]
     )
-    criterion = getattr(torch.nn, config["training"]["criterion"])()
+    # TODO: add criterion + structural criterion for regression
+    criterion = getattr(torch.nn, config["training"]["criterion"])().to(device)
+    structural_criterion = getattr(torchmetrics.image, config["training"]["criterion"])(
+        betas=tuple(config["training"]["criterion_params"]["betas"])
+    ).to(device)
+    alpha = config["training"]["loss_weights"]["alpha"]
 
     # --- Load normalized dataloaders for domain adaptation ---
     LOGGER.info(f"OPTIMIZATION: Training excluding cluster: {cluster}")
@@ -66,7 +72,8 @@ def objective_mmd(
             source_val_loader=source_val_loader,
             optimizer=optimizer,
             scheduler=scheduler,
-            regression_criterion=criterion,
+            regression_criterion=[criterion, structural_criterion],
+            alpha=alpha,
             device=device,
         )
 
@@ -99,6 +106,7 @@ def _train_step_mmd(
     optimizer,
     scheduler,
     regression_criterion,
+    alpha,
     device,
 ):
 
@@ -128,7 +136,12 @@ def _train_step_mmd(
             target_variable=temperature_t,
             target_elevation=elevation_t,
         )
-        regression_loss = regression_criterion(output, target)
+        regression_loss = (
+            alpha
+            * regression_criterion[0](output, target)
+            * (1 - alpha)
+            * regression_criterion[1](output, target)
+        )
 
         loss = regression_loss + lambda_mmd * mmd_loss
 
@@ -152,7 +165,12 @@ def _train_step_mmd(
                 target.to(device),
             )
             output, _ = model(temperature, elevation)
-            val_loss += regression_criterion(output, target).item()
+            val_loss += (
+                alpha
+                * regression_criterion[0](output, target)
+                * (1 - alpha)
+                * regression_criterion[1](output, target)
+            ).item()
             del output
 
     val_loss /= len(source_val_loader)
@@ -184,7 +202,10 @@ def train_model_mmd(
     scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(
         optimizer, **config["training"]["scheduler_params"]
     )
-    criterion = getattr(torch.nn, config["training"]["criterion"])()
+    # criterion = getattr(torch.nn, config["training"]["criterion"])()
+    criterion = getattr(torchmetrics.image, config["training"]["criterion"])(
+        betas=tuple(config["training"]["criterion_params"]["betas"])
+    ).to(device)
 
     early_stopping = config["training"]["early_stopping"]
     patience = config["training"]["early_stopping_params"]["patience"]

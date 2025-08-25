@@ -213,9 +213,19 @@ def main():
                 )
 
                 if cluster_to_process in config["domain_specific"]:
-                    config["domain_specific"][cluster_to_process][
-                        "optimizer_params"
-                    ].update(study.best_params)
+                    ds = config["domain_specific"][cluster_to_process]
+                    ds["optimizer_params"].update(
+                        {
+                            "lr_model": study.best_params["lr_model"],
+                            "weight_decay": study.best_params["weight_decay"],
+                        }
+                    )
+                    ds["loss_params"].update(
+                        {
+                            "lr_loss": study.best_params["lr_loss"],
+                            "weight_decay": 0.0,
+                        }
+                    )
                 with open(config_path, "w") as f:
                     yaml.dump(config, f, sort_keys=False)
             else:
@@ -246,6 +256,7 @@ def main():
                 data_path=config["paths"]["data_path"],
                 elev_dir=config["paths"]["elev_path"],
                 cluster_name=cluster_to_process,
+                vars=config["experiment"]["vars"],
                 batch_size=config["training"]["batch_size"],
                 num_workers=config["training"]["num_workers"],
                 use_theta_e=config["training"]["use_theta_e"],

@@ -56,11 +56,12 @@ def get_single_cluster_dataloader(
     data_path,
     elev_dir,
     cluster_name,
+    vars,
     batch_size=8,
     num_workers=1,
     use_theta_e=False,
     device="cpu",
-    stats_path="single_normalization_stats.json",
+    stats_path="train_scaling_metadata.json",
     augment=False,
 ):
     """
@@ -78,32 +79,17 @@ def get_single_cluster_dataloader(
     """
     LOGGER.info(f"DATALOADER: Loading single cluster dataloaders for '{cluster_name}'")
 
-    # Preload raw datasets to compute statistics
-    raw_train_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster_name),
-            elev_dir,
-            split="train",
-            use_theta_e=use_theta_e,
-            device=device,
-            augment=False,
-        )
-    ]
+    statistics_path = os.path.join(data_path, cluster_name, stats_path)
 
-    LOGGER.info(
-        f"DATALOADER: Computing/loading normalization statistics for {len(raw_train_clusters[0])} images..."
-    )
-    stats = load_or_compute_stats(
-        raw_train_clusters,
-        stats_path=os.path.join(data_path, cluster_name, stats_path),
-    )
-    LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
+    LOGGER.info(f"Loading normalization stats from {statistics_path}")
+    with open(statistics_path, "r") as f:
+        stats = json.load(f)
+        LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
 
     common_args = {
-        "temp_mean": stats["temp_mean"],
-        "temp_std": stats["temp_std"],
-        "elev_mean": stats["elev_mean"],
-        "elev_std": stats["elev_std"],
+        "vars": vars,
+        "elev_mean": stats["elevation"]["mean"],
+        "elev_std": stats["elevation"]["std"],
         "use_theta_e": use_theta_e,
         "device": device,
     }
@@ -148,6 +134,9 @@ def get_single_cluster_dataloader(
             Test size: {len(test_dataset)}"
     )
     return {"train": train_loader, "val": val_loader, "test": test_loader}
+
+
+# OLD
 
 
 def get_clusters_dataloader(
