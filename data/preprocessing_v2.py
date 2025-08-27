@@ -20,7 +20,7 @@ def _extract_location_time(filename):
         )
         return A, B, year, month
     raise ValueError(
-        f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nz"
+        f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nc"
     )
 
 
@@ -384,16 +384,16 @@ def main():
     )
     input_dir = os.path.join(
         old_data_dir,
-        "T2M_TOTPREC_cropped_gridded_clustered_threshold_8_blurred_x8",
+        "T2M_TOTPREC_cropped_gridded_clustered_koppen_geiger_blurred_x8",
     )
     target_dir = os.path.join(
         old_data_dir,
-        "T2M_TOTPREC_cropped_gridded_clustered_threshold_8",
+        "T2M_TOTPREC_cropped_gridded_clustered_koppen_geiger",
     )
     elev_dir = os.path.join(
         "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"
     )
-    save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v5"
+    save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v6"
     var_names = ["T_2M", "TOT_PREC"]
 
     # --- Step 1: Process raw .nz files into .npy arrays for all clusters ---

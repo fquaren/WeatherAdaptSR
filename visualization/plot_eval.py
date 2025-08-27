@@ -249,12 +249,13 @@ def plot_training_metrics(
     plt.title(
         f"Training metrics {model_architecture} model trained on {trained_on_label}"
     )
-    plt.plot(b_T, linestyle=":", label="Train b_T")
-    plt.plot(val_b_T, linestyle="-", label="Validation b_T")
-    plt.plot(b_P, linestyle="-.", label="Train b_P")
-    plt.plot(val_b_P, linestyle="--", label="Validation b_P")
+    plt.plot(np.log(b_T), linestyle=":", label="Train b_T")
+    plt.plot(np.log(val_b_T), linestyle="-", label="Validation b_T")
+    plt.plot(np.log(b_P), linestyle="-.", label="Train b_P")
+    plt.plot(np.log(val_b_P), linestyle="--", label="Validation b_P")
     plt.xlabel("Epoch")
     plt.ylabel("Parameter value")
+    plt.yscale("log")
     plt.legend()
     plt.savefig(os.path.join(evaluation_path, "log_params.png"))
     plt.close()
@@ -277,7 +278,7 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
     sum_differences = []
     for i in range(mean_eval_matrix.shape[1]):
         column_values = mean_eval_matrix[:, i]
-        diff = column_values[i] - column_values
+        diff = np.abs(column_values[i] - column_values)
         sum_diff = np.sum(np.delete(diff, i))
         sum_differences.append(sum_diff)
 
@@ -287,7 +288,9 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
     print(f"EVALUATION: Mean off-diagonal {metric}: {mean_off_diagonal}")
     print(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
     print(f"EVALUATION: Consistency metric: {consistency}")
-    print(f"EVALUATION: Difference Diag-OffDiag: {mean_diagonal - mean_off_diagonal}")
+    print(
+        f"EVALUATION: Absolute Difference Diag-OffDiag: {np.abs(mean_diagonal - mean_off_diagonal)}"
+    )
 
     # Plot mean test loss matrix
     cmap = "bwr_r" if metric == "SSIM" else "bwr"

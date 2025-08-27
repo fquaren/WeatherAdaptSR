@@ -220,9 +220,11 @@ def main():
                             "weight_decay": study.best_params["weight_decay"],
                         }
                     )
+                    # Update lr_loss based on the new lr_ratio
                     ds["loss_params"].update(
                         {
-                            "lr_loss": study.best_params["lr_loss"],
+                            "lr_loss": study.best_params["lr_model"]
+                            * study.best_params["lr_ratio"],
                             "weight_decay": 0.0,
                         }
                     )

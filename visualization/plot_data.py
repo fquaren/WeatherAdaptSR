@@ -106,13 +106,13 @@ def plot_temperature_distributions(
             coarse_data = np.load(
                 os.path.join(
                     config["paths"]["data_path"],
-                    f"cluster_{cluster_id}/{split_type}_T_2M_input_16.npy",
+                    f"cluster_{cluster_id}/{split_type}_T_2M_input.npy",
                 )
             ).flatten()
             input_data = np.load(
                 os.path.join(
                     config["paths"]["data_path"],
-                    f"cluster_{cluster_id}/{split_type}_T_2M_input_interp16x_nn.npy",
+                    f"cluster_{cluster_id}/{split_type}_T_2M_input_normalized_interp8x_bilinear.npy",
                 )
             ).flatten()
             target_data = np.load(
@@ -153,15 +153,15 @@ def plot_temperature_distributions(
             )
 
             # --- Set Plot Properties ---
-            print("Computing the Wasserstein distance ... ")
-            wd = calculate_wasserstein_distance(input_data, target_data)
-            print("Computing the Person correlation ... ")
-            pc = calculate_pearson_correlation(input_data, target_data)
-            ax.set_title(
-                f"Cluster {cluster_id} - {split_type.capitalize()}, \
-                \nWasserstein Distance: {wd:.3f} \
-                \nPerson correlation: {pc[0]:.3f}"
-            )
+            # print("Computing the Wasserstein distance ... ")
+            # wd = calculate_wasserstein_distance(input_data, target_data)
+            # print("Computing the Person correlation ... ")
+            # pc = calculate_pearson_correlation(input_data, target_data)
+            # ax.set_title(
+            #     f"Cluster {cluster_id} - {split_type.capitalize()}, \
+            #     \nWasserstein Distance: {wd:.3f} \
+            #     \nPerson correlation: {pc[0]:.3f}"
+            # )
             ax.set_xlabel("2m Temperature (K)")
             ax.set_ylabel("Density")
             ax.set_xlim(temp_min, temp_max)
@@ -170,6 +170,103 @@ def plot_temperature_distributions(
     plt.tight_layout(rect=[0, 0.03, 1, 0.98])  # Adjust layout to prevent title overlap
     os.makedirs(os.path.join(os.path.dirname(__file__), "figures"), exist_ok=True)
     plt.savefig(os.path.join(os.path.dirname(__file__), "figures", "temp_hist.png"))
+
+
+def plot_total_precipitation_distributions(
+    num_clusters, temp_min, temp_max, config, splits=["train", "val", "test"]
+):
+    """
+    Generates a grid of plots showing input and target total precipitation distributions
+    for each cluster across train, validation, and test splits.
+
+    Args:
+        num_clusters (int): The total number of clusters.
+        splits (list): A list of strings representing the data splits (e.g., ['train', 'validation', 'test']).
+        temp_min (float): Minimum value for the x-axis (total precipitation).
+        temp_max (float): Maximum value for the x-axis (total precipitation).
+    """
+    fig, axes = plt.subplots(
+        num_clusters, len(splits), figsize=(18, 4 * num_clusters), squeeze=False
+    )
+    fig.suptitle(
+        "Input and target total precipitation distribution, for all clusters",
+        fontsize=20,
+        y=0.99,
+    )
+
+    for i in tqdm(range(num_clusters), desc="Loading and plotting clusters: "):
+        cluster_id = i
+        for j, split_type in enumerate(splits):
+            ax = axes[i, j]
+
+            # --- Load Data for Current Plot ---
+            coarse_data = np.load(
+                os.path.join(
+                    config["paths"]["data_path"],
+                    f"cluster_{cluster_id}/{split_type}_TOT_PREC_input.npy",
+                )
+            ).flatten()
+            input_data = np.load(
+                os.path.join(
+                    config["paths"]["data_path"],
+                    f"cluster_{cluster_id}/{split_type}_TOT_PREC_input_normalized_interp8x_bilinear.npy",
+                )
+            ).flatten()
+            target_data = np.load(
+                os.path.join(
+                    config["paths"]["data_path"],
+                    f"cluster_{cluster_id}/{split_type}_TOT_PREC_target.npy",
+                )
+            ).flatten()
+
+            # --- Plot Distributions ---
+            num_bins = 100
+            ax.hist(
+                np.log1p(coarse_data),
+                bins=num_bins,
+                range=(temp_min, temp_max),
+                color="b",
+                label="Coarse",
+                alpha=0.5,
+                density=True,
+            )
+            ax.hist(
+                np.log1p(input_data),
+                bins=num_bins,
+                range=(temp_min, temp_max),
+                color="g",
+                label="Interpolated",
+                alpha=0.5,
+                density=True,
+            )
+            ax.hist(
+                np.log1p(target_data),
+                bins=num_bins,
+                range=(temp_min, temp_max),
+                color="r",
+                label="Target",
+                alpha=0.5,
+                density=True,
+            )
+
+            # --- Set Plot Properties ---
+            # print("Computing the Wasserstein distance ... ")
+            # wd = calculate_wasserstein_distance(input_data, target_data)
+            # print("Computing the Person correlation ... ")
+            # pc = calculate_pearson_correlation(input_data, target_data)
+            # ax.set_title(
+            #     f"Cluster {cluster_id} - {split_type.capitalize()}, \
+            #     \nWasserstein Distance: {wd:.3f} \
+            #     \nPerson correlation: {pc[0]:.3f}"
+            # )
+            ax.set_xlabel("Total precipitation (mm)")
+            ax.set_ylabel("Density")
+            ax.set_xlim(temp_min, temp_max)
+            ax.legend()
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.98])  # Adjust layout to prevent title overlap
+    os.makedirs(os.path.join(os.path.dirname(__file__), "figures"), exist_ok=True)
+    plt.savefig(os.path.join(os.path.dirname(__file__), "figures", "precip_hist.png"))
 
 
 def plot_gap_distributions(
@@ -203,7 +300,7 @@ def plot_gap_distributions(
             input_data = np.load(
                 os.path.join(
                     config["paths"]["data_path"],
-                    f"cluster_{cluster_id}/{split_type}_T_2M_input_interp16x_nn.npy",
+                    f"cluster_{cluster_id}/{split_type}_T_2M_input_normalized_interp8x_bilinear.npy",
                 )
             ).flatten()
             target_data = np.load(
@@ -378,42 +475,43 @@ def main():
 
     # --- Run the plotting function ---
     plot_temperature_distributions(num_clusters, 250, 320, config)
-    plot_gap_distributions(num_clusters, -5, 5, config)
-    plot_elev_distributions(num_clusters, 0, 4000, config)
+    plot_total_precipitation_distributions(num_clusters, 0, 3.0, config)
+    # plot_gap_distributions(num_clusters, -5, 5, config)
+    # plot_elev_distributions(num_clusters, 0, 4000, config)
 
-    for cluster in config["paths"]["clusters"]:
-        for split in ["train", "val", "test"]:
-            for var in ["T_2M", "TOT_PREC"]:
-                input_data = np.load(
-                    os.path.join(
-                        config["paths"]["data_path"],
-                        f"{cluster}/{split}_{var}_input_interp16x_nn.npy",
-                    )
-                )
-                target_data = np.load(
-                    os.path.join(
-                        config["paths"]["data_path"],
-                        f"{cluster}/{split}_{var}_target.npy",
-                    )
-                )
-                list_elev_idx = np.load(
-                    os.path.join(
-                        config["paths"]["data_path"],
-                        f"{cluster}/{split}_LOCATION.npy",
-                    )
-                )
-                elev_patches = []
-                for idx in list_elev_idx:
-                    elev_patches.append(
-                        np.load(
-                            os.path.join(
-                                config["paths"]["elev_path"],
-                                f"{idx[0]}_{idx[1]}_dem.npy",
-                            )
-                        )
-                    )
-                elev_data = np.stack(elev_patches, axis=0)
-                plot_images(input_data, target_data, elev_data, cluster, save_path)
+    # for cluster in config["paths"]["clusters"]:
+    #     for split in ["train", "val", "test"]:
+    #         for var in ["T_2M", "TOT_PREC"]:
+    #             input_data = np.load(
+    #                 os.path.join(
+    #                     config["paths"]["data_path"],
+    #                     f"{cluster}/{split}_{var}_input_normalized_interp8x_bilinear.npy",
+    #                 )
+    #             )
+    #             target_data = np.load(
+    #                 os.path.join(
+    #                     config["paths"]["data_path"],
+    #                     f"{cluster}/{split}_{var}_target.npy",
+    #                 )
+    #             )
+    #             list_elev_idx = np.load(
+    #                 os.path.join(
+    #                     config["paths"]["data_path"],
+    #                     f"{cluster}/{split}_LOCATION.npy",
+    #                 )
+    #             )
+    #             elev_patches = []
+    #             for idx in list_elev_idx:
+    #                 elev_patches.append(
+    #                     np.load(
+    #                         os.path.join(
+    #                             config["paths"]["elev_path"],
+    #                             f"{idx[0]}_{idx[1]}_dem.npy",
+    #                         )
+    #                     )
+    #                 )
+    #             elev_data = np.stack(elev_patches, axis=0)
+    #             plot_images(input_data, target_data, elev_data, cluster, save_path)
 
     return
 

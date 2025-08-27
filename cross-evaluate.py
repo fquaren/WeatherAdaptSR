@@ -1,5 +1,4 @@
 import torch
-import torchmetrics.image
 import numpy as np
 import os
 import argparse
@@ -136,75 +135,75 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
     return evaluation_results
 
 
-def evaluate_model(model, criterion, test_loader, device="cuda"):
-    """
-    Evaluates the model on the test datasets using LaplaceHeteroscedasticLoss.
+# def evaluate_model(model, criterion, test_loader, device="cuda"):
+#     """
+#     Evaluates the model on the test datasets using LaplaceHeteroscedasticLoss.
 
-    Args:
-        model: The PyTorch model to evaluate, which outputs both predictions
-               and uncertainty estimates.
-        criterion: LaplaceHeteroscedasticLoss instance.
-        test_loader: DataLoader instance for testing.
-        device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
+#     Args:
+#         model: The PyTorch model to evaluate, which outputs both predictions
+#                and uncertainty estimates.
+#         criterion: LaplaceHeteroscedasticLoss instance.
+#         test_loader: DataLoader instance for testing.
+#         device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
 
-    Returns:
-        dict: Evaluation results containing test_losses, temp_losses, precip_losses,
-              predictions, targets, and inputs.
-    """
-    test_losses_list = []
-    temp_losses_list = []
-    precip_losses_list = []
-    predictions_T_list = []
-    predictions_P_list = []
-    log_b_T_list = []
-    log_b_P_list = []
-    targets_list = []
-    inputs_list = []
+#     Returns:
+#         dict: Evaluation results containing test_losses, temp_losses, precip_losses,
+#               predictions, targets, and inputs.
+#     """
+#     test_losses_list = []
+#     temp_losses_list = []
+#     precip_losses_list = []
+#     predictions_T_list = []
+#     predictions_P_list = []
+#     log_b_T_list = []
+#     log_b_P_list = []
+#     targets_list = []
+#     inputs_list = []
 
-    model.eval()
-    with torch.no_grad():
-        for inputs, targets in test_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
+#     model.eval()
+#     with torch.no_grad():
+#         for inputs, targets in test_loader:
+#             inputs, targets = inputs.to(device), targets.to(device)
 
-            # The model now returns four tensors: pred_T, log_b_T, pred_P, log_b_P
-            pred_T, log_b_T, pred_P, log_b_P = model(inputs)
+#             # The model now returns four tensors: pred_T, log_b_T, pred_P, log_b_P
+#             pred_T, log_b_T, pred_P, log_b_P = model(inputs)
 
-            # Pass all four outputs to the new criterion
-            loss, mae_T, mae_P, b_T, b_P = criterion(
-                pred_T,
-                log_b_T,
-                targets[:, 0:1, :, :],
-                pred_P,
-                log_b_P,
-                targets[:, 1:2, :, :],
-            )
+#             # Pass all four outputs to the new criterion
+#             loss, mae_T, mae_P, b_T, b_P = criterion(
+#                 pred_T,
+#                 log_b_T,
+#                 targets[:, 0:1, :, :],
+#                 pred_P,
+#                 log_b_P,
+#                 targets[:, 1:2, :, :],
+#             )
 
-            test_losses_list.append(loss.item())
-            temp_losses_list.append(mae_T.item())
-            precip_losses_list.append(mae_P.item())
+#             test_losses_list.append(loss.item())
+#             temp_losses_list.append(mae_T.item())
+#             precip_losses_list.append(mae_P.item())
 
-            # Collect all outputs, including the uncertainty estimates
-            predictions_T_list.append(pred_T.cpu().numpy())
-            predictions_P_list.append(pred_P.cpu().numpy())
-            log_b_T_list.append(log_b_T.cpu().numpy())
-            log_b_P_list.append(log_b_P.cpu().numpy())
+#             # Collect all outputs, including the uncertainty estimates
+#             predictions_T_list.append(pred_T.cpu().numpy())
+#             predictions_P_list.append(pred_P.cpu().numpy())
+#             log_b_T_list.append(log_b_T.cpu().numpy())
+#             log_b_P_list.append(log_b_P.cpu().numpy())
 
-            targets_list.append(targets.cpu().numpy())
-            inputs_list.append(inputs.cpu().numpy())
+#             targets_list.append(targets.cpu().numpy())
+#             inputs_list.append(inputs.cpu().numpy())
 
-    evaluation_results = {
-        "test_losses": np.array(test_losses_list),
-        "temp_losses": np.array(temp_losses_list),
-        "precip_losses": np.array(precip_losses_list),
-        "pred_T": np.concatenate(predictions_T_list, axis=0),
-        "pred_P": np.concatenate(predictions_P_list, axis=0),
-        "log_b_T": np.concatenate(log_b_T_list, axis=0),
-        "log_b_P": np.concatenate(log_b_P_list, axis=0),
-        "targets": np.concatenate(targets_list, axis=0),
-        "inputs": np.concatenate(inputs_list, axis=0),
-    }
+#     evaluation_results = {
+#         "test_losses": np.array(test_losses_list),
+#         "temp_losses": np.array(temp_losses_list),
+#         "precip_losses": np.array(precip_losses_list),
+#         "pred_T": np.concatenate(predictions_T_list, axis=0),
+#         "pred_P": np.concatenate(predictions_P_list, axis=0),
+#         "log_b_T": np.concatenate(log_b_T_list, axis=0),
+#         "log_b_P": np.concatenate(log_b_P_list, axis=0),
+#         "targets": np.concatenate(targets_list, axis=0),
+#         "inputs": np.concatenate(inputs_list, axis=0),
+#     }
 
-    return evaluation_results
+#     return evaluation_results
 
 
 def evaluate_model_mmd(model, list_criterions, alpha, test_loader, device="cuda"):

@@ -27,7 +27,9 @@ def objective(
 ):
     # Hyperparameter optimization
     lr_model = trial.suggest_float("lr_model", 1e-6, 1e-4, log=True)
-    lr_loss = trial.suggest_float("lr_loss", 1e-7, 1e-3, log=True)
+    # New: Suggest a ratio instead of an independent lr_loss
+    lr_ratio = trial.suggest_float("lr_ratio", 0.1, 1.0)
+    lr_loss = lr_model * lr_ratio
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
 
     # Use Laplace homoscedastic loss
@@ -38,12 +40,12 @@ def objective(
         [
             {
                 "params": model.parameters(),
-                "lr_model": lr_model,
+                "lr": lr_model,
                 "weight_decay": weight_decay,
             },
             {
                 "params": [criterion.log_b_T, criterion.log_b_P],
-                "lr_loss": lr_loss,
+                "lr": lr_loss,
                 "weight_decay": 0.0,
             },
         ]

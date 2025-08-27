@@ -22,7 +22,7 @@ container_path="/users/fquareng/singularity/dl_gh200.sif"
 models=("UNet")
 methods=("cross-val")
 exp_dir="/scratch/fquareng/experiments/single_MAE_fancy" 
-experiments=("$exp_dir/g5ad")
+experiments=("$exp_dir/o19p")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"
