@@ -23,6 +23,12 @@ models=("HomoscedasticUNet_BN_Dropout")
 methods=("single")
 seeds=(0)
 
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
 # exp_dir="/scratch/fquareng/experiments/single-10x"
 # experiments=("$exp_dir/8qd3" "$exp_dir/ahc0" "$exp_dir/epsf" "$exp_dir/h78o" "$exp_dir/jfk5" "$exp_dir/l778" "$exp_dir/oxjb" "$exp_dir/rnjb" "$exp_dir/rrqg" "$exp_dir/x586") # "$exp_dir/" "$exp_dir/" "$exp_dir/")
 # exp="${experiments[$i]}"
@@ -40,40 +46,3 @@ for i in "${!seeds[@]}"; do
         --seed "$seed" &
 done
 wait
-
-# for i in "${!models[@]}"; do
-#     model="${models[$i]}"
-#     method="${methods[$i]}"
-    
-#     singularity exec --nv "$container_path" \
-#         python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
-#         --model "$model" \
-#         --method "$method" \
-
-# done
-# wait
-
-# ## Train a single model
-# model="UNet_MMD"
-# method="mmd"
-# exp=$(singularity exec --nv "$container_path" \
-#     python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
-#     --model "$model" \
-#     --method "$method" \
-# )
-# singularity exec --nv "$container_path" \
-#     python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-evaluate.py \
-#     --device "cuda" \
-#     --model "$model" \
-#     --exp_path "$exp" \
-#     --method "$method" \
-
-## Train and evaluate different models in parallel
-
-# models=("UNet" "UNet_DO" "UNet_BN" "UNet_DO_BN" "UNet_Noise")
-# resume=("suyk" "m6dm" "mz3o" "o3zc" "rjdx")
-    # exp="${resume[$i]}"
-    # --resume_exp "$exp"
-# models=("UNet_Noise_DO_BN" "UNet_MMD")
-# resume=("0s5v" "vkwn")
-# args=("" "--method mmd")

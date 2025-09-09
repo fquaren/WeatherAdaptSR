@@ -27,12 +27,12 @@ paths:
 
 optimization:
   num_epochs: 10
-  num_trials: 50
+  num_trials: 20
 
 training:
-  init_b_T: 10
-  init_b_P: 1
-  augmentation: False
+  init_b_T: 1.0
+  init_b_P: 1.0
+  augmentation: True
   num_epochs: 200
   batch_size: 64
   use_theta_e: False

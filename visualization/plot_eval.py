@@ -5,83 +5,7 @@ import os
 from matplotlib import colors
 
 
-# def plot_results(
-#     evaluation_results, eval_on_cluster, cluster_name, save_path, save=True
-# ):
-#     """
-#     Plots the worst and best 5 examples based on test loss for a given cluster.
-#     """
-#     # Unpack evaluation results
-#     test_losses = evaluation_results["test_losses"]
-#     predictions = evaluation_results["predictions"]
-#     targets = evaluation_results["targets"]
-#     elevations = evaluation_results["elevations"]
-#     inputs = evaluation_results["inputs"]
-
-#     # Create directory for saving results
-#     os.makedirs(save_path, exist_ok=True)
-
-#     # Get top 5 and bottom 5 indices based on loss
-#     top_5_idx = test_losses.argsort()[-5:][::-1]
-#     bottom_5_idx = test_losses.argsort()[:5]
-
-#     def plot_subset(indices, title_prefix, filename_suffix):
-#         fig, axes = plt.subplots(5, 5, figsize=(10, 15))
-#         plt.suptitle(
-#             f"{title_prefix} 5 - Mean Test Loss for model trained excluding {eval_on_cluster}\n"
-#             f"and tested on {cluster_name}: {test_losses.mean():.4f}"
-#         )
-
-#         for i, idx in enumerate(indices):
-
-#             input_img = inputs[idx][0]
-#             pred_img = predictions[idx][0]
-#             target_img = targets[idx][0]
-#             elev_img = elevations[idx][0]
-#             mse_img = np.subtract(pred_img, target_img) ** 2  # Pixel wise mse
-
-#             images = [input_img, pred_img, target_img, mse_img, elev_img]
-#             vmin = min(img.min() for img in images[:3])
-#             vmax = max(img.max() for img in images[:3])
-#             cmaps = ["coolwarm", "coolwarm", "coolwarm", "plasma", "viridis"]
-#             titles = [
-#                 "Input",
-#                 "Prediction",
-#                 "Target",
-#                 f"Pixel-wise MSE (Mean: {np.mean(mse_img):.4f})",
-#                 "Elevation",
-#             ]
-
-#             for j, (data, cmap, title) in enumerate(zip(images, cmaps, titles)):
-#                 if j < 3:
-#                     img = axes[i, j].imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-#                 else:
-#                     img = axes[i, j].imshow(data, cmap=cmap)
-
-#                 axes[i, j].set_title(title)
-#                 axes[i, j].axis("off")
-#                 cbar = fig.colorbar(img, ax=axes[i, j], fraction=0.046, pad=0.04)
-#                 cbar.ax.tick_params(labelsize=8)
-
-#         plt.tight_layout()
-#         if save:
-#             plt.savefig(
-#                 os.path.join(
-#                     save_path,
-#                     f"evaluation_results_{filename_suffix}_{eval_on_cluster}_{cluster_name}.png",
-#                 )
-#             )
-#         plt.close(fig)
-
-
-#     # Plot worst and best
-#     plot_subset(top_5_idx, "WORST", "worst")
-#     plot_subset(bottom_5_idx, "BEST", "best")
-
-
-def plot_results(
-    evaluation_results, eval_on_cluster, cluster_name, save_path, save=True
-):
+def plot_results(evaluation_results, eval_on_cluster, cluster_name, save_path, save=True, N=5):
     """
     Plots the worst and best 5 examples for each variable (T_2M and TOT_PREC)
     on a single figure.
@@ -99,14 +23,14 @@ def plot_results(
     # Create directory for saving results
     os.makedirs(save_path, exist_ok=True)
 
-    # Get top 5 and bottom 5 indices based on loss
-    top_5_idx = test_losses.argsort()[-5:][::-1]
-    bottom_5_idx = test_losses.argsort()[:5]
+    # Get top N and bottom N indices based on loss
+    top_N_idx = test_losses.argsort()[-N:][::-1]
+    bottom_N_idx = test_losses.argsort()[:N]
 
     def plot_subset(indices, title_prefix, filename_suffix):
-        fig, axes = plt.subplots(10, 5, figsize=(12, 25))
+        fig, axes = plt.subplots(N * 2, 5, figsize=(12, 5 * N))
         plt.suptitle(
-            f"{title_prefix} 5 examples for T_2M and TOT_PREC\n"
+            f"{title_prefix} {N} examples for T_2M and TOT_PREC\n"
             f"Trained excluding {eval_on_cluster}, Evaluated on {cluster_name}\n"
             f"Mean Test Loss: {test_losses.mean():.4f}.\n"
             f"b_T: {b_T:.4f}, b_P: {b_P:.4f}"
@@ -120,16 +44,15 @@ def plot_results(
             "coolwarm",
             "plasma",
             "viridis",
-        ]  # Keep original cmaps for reference
+        ]
+        labels = {"T_2M": ["K", "K", "K", "m", "binary"], "TOT_PREC": ["mm", "mm", "mm", "m", "binary"]}
 
         # Define custom binary colormap for the mask
-        binary_cmap = colors.ListedColormap(
-            ["blue", "brown"]
-        )  # Example: 0=blue, 1=brown
+        binary_cmap = colors.ListedColormap(["blue", "brown"])  # Example: 0=blue, 1=brown
 
         for var_idx, var_name in enumerate(variable_names):
             for i, idx in enumerate(indices):
-                row_offset = var_idx * 5 + i
+                row_offset = var_idx * N + i
 
                 # Extract specific channel for the current variable
                 input_img = inputs[idx][var_idx]
@@ -145,9 +68,7 @@ def plot_results(
                 vmin_data = np.amin(target_img)
                 vmax_data = np.amax(target_img)
 
-                for j, (data, title) in enumerate(
-                    zip(images, titles)
-                ):  # Removed cmap from here
+                for j, (data, title) in enumerate(zip(images, titles)):  # Removed cmap from here
                     ax = axes[row_offset, j]
 
                     current_cmap = cmaps[j]  # Default from the list
@@ -161,15 +82,13 @@ def plot_results(
                     elif j == 4:  # Column 5: Land mask
                         current_cmap = binary_cmap
                         current_vmin = 0.0
-                        current_vmax = 1.0  # Mask values are typically 0 or 1
+                        current_vmax = 1.0
 
-                    img = ax.imshow(
-                        data, cmap=current_cmap, vmin=current_vmin, vmax=current_vmax
-                    )
+                    img = ax.imshow(data, cmap=current_cmap, vmin=current_vmin, vmax=current_vmax)
 
                     ax.set_title(f"{var_name} - {title}")
                     ax.axis("off")
-                    cbar = fig.colorbar(img, ax=ax, fraction=0.046, pad=0.04)
+                    cbar = fig.colorbar(img, ax=ax, fraction=0.046, pad=0.04, label=labels[var_name][j])
                     cbar.ax.tick_params(labelsize=8)
 
         plt.tight_layout()
@@ -183,29 +102,23 @@ def plot_results(
         plt.close(fig)
 
     # Plot worst and best
-    plot_subset(top_5_idx, "WORST", "worst")
-    plot_subset(bottom_5_idx, "BEST", "best")
+    plot_subset(top_N_idx, "WORST", "worst")
+    plot_subset(bottom_N_idx, "BEST", "best")
 
 
-def plot_training_metrics(
-    save_path, evaluation_path, model_architecture, trained_on_label, logger
-):
+def plot_training_metrics(save_path, evaluation_path, model_architecture, trained_on_label, logger):
     # Plot training metrics
     train_losses_path = os.path.join(save_path, "train_losses.npy")
     val_losses_path = os.path.join(save_path, "val_losses.npy")
 
     if not os.path.exists(train_losses_path) or not os.path.exists(val_losses_path):
-        logger.warning(
-            f"Training loss files not found in {save_path}. Skipping training metrics plot."
-        )
+        logger.warning(f"Training loss files not found in {save_path}. Skipping training metrics plot.")
         return
 
     train_losses = np.load(train_losses_path)
     val_losses = np.load(val_losses_path)
     _ = plt.figure()
-    plt.title(
-        f"Training metrics {model_architecture} model trained on {trained_on_label}"
-    )
+    plt.title(f"Training metrics {model_architecture} model trained on {trained_on_label}")
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
@@ -220,17 +133,13 @@ def plot_training_metrics(
     val_losses_path = os.path.join(save_path, "val_temp_losses.npy")
 
     if not os.path.exists(train_losses_path) or not os.path.exists(val_losses_path):
-        logger.warning(
-            f"Training loss files not found in {save_path}. Skipping training metrics plot."
-        )
+        logger.warning(f"Training loss files not found in {save_path}. Skipping training metrics plot.")
         return
 
     train_losses = np.load(train_losses_path)
     val_losses = np.load(val_losses_path)
     _ = plt.figure()
-    plt.title(
-        f"Training metrics {model_architecture} model trained on {trained_on_label}"
-    )
+    plt.title(f"Training metrics {model_architecture} model trained on {trained_on_label}")
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
@@ -245,17 +154,13 @@ def plot_training_metrics(
     val_losses_path = os.path.join(save_path, "val_precip_losses.npy")
 
     if not os.path.exists(train_losses_path) or not os.path.exists(val_losses_path):
-        logger.warning(
-            f"Training loss files not found in {save_path}. Skipping training metrics plot."
-        )
+        logger.warning(f"Training loss files not found in {save_path}. Skipping training metrics plot.")
         return
 
     train_losses = np.load(train_losses_path)
     val_losses = np.load(val_losses_path)
     _ = plt.figure()
-    plt.title(
-        f"Training metrics {model_architecture} model trained on {trained_on_label}"
-    )
+    plt.title(f"Training metrics {model_architecture} model trained on {trained_on_label}")
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
@@ -272,9 +177,7 @@ def plot_training_metrics(
     val_b_P_path = os.path.join(save_path, "val_b_P.npy")
 
     if not os.path.exists(b_T_path) or not os.path.exists(b_P_path):
-        logger.warning(
-            f"Training loss files not found in {save_path}. Skipping training metrics plot."
-        )
+        logger.warning(f"Training loss files not found in {save_path}. Skipping training metrics plot.")
         return
 
     b_T = np.load(b_T_path)
@@ -282,9 +185,7 @@ def plot_training_metrics(
     b_P = np.load(b_P_path)
     val_b_P = np.load(val_b_P_path)
     _ = plt.figure()
-    plt.title(
-        f"Training metrics {model_architecture} model trained on {trained_on_label}"
-    )
+    plt.title(f"Training metrics {model_architecture} model trained on {trained_on_label}")
     plt.plot(b_T, linestyle=":", label="Train b_T")
     plt.plot(val_b_T, linestyle="-", label="Validation b_T")
     plt.plot(b_P, linestyle="-.", label="Train b_P")
@@ -300,9 +201,7 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path, config)
     """
     Plots the mean test loss matrix for all clusters, highlighting the diagonal.
     """
-    assert (
-        mean_eval_matrix.shape[0] == mean_eval_matrix.shape[1]
-    ), "Matrix must be square"
+    assert mean_eval_matrix.shape[0] == mean_eval_matrix.shape[1], "Matrix must be square"
     N = mean_eval_matrix.shape[0]
 
     # 1. Compute the mean of the diagonal (same cluster train-test)
@@ -323,9 +222,7 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path, config)
     print(f"EVALUATION: Mean off-diagonal {metric}: {mean_off_diagonal}")
     print(f"EVALUATION: Mean overall {metric}: {np.mean(mean_eval_matrix)}")
     print(f"EVALUATION: Consistency metric: {consistency}")
-    print(
-        f"EVALUATION: Absolute Difference Diag-OffDiag: {np.abs(mean_diagonal - mean_off_diagonal)}"
-    )
+    print(f"EVALUATION: Absolute Difference Diag-OffDiag: {np.abs(mean_diagonal - mean_off_diagonal)}")
 
     # Plot mean test loss matrix
     cmap = "bwr"

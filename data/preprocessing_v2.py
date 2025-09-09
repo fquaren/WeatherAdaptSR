@@ -8,9 +8,7 @@ import concurrent.futures
 
 
 def _extract_location_time(filename):
-    match = re.match(
-        r"(\d{1,2})_(\d{1,2})_lffd(\d{4})(\d{2})", os.path.basename(filename)
-    )
+    match = re.match(r"(\d{1,2})_(\d{1,2})_lffd(\d{4})(\d{2})", os.path.basename(filename))
     if match:
         A, B, year, month = (
             int(match.group(1)),
@@ -19,9 +17,7 @@ def _extract_location_time(filename):
             int(match.group(4)),
         )
         return A, B, year, month
-    raise ValueError(
-        f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nc"
-    )
+    raise ValueError(f"Filename {filename} does not match expected pattern A_B_lffdYYYYMM*.nc")
 
 
 def get_file_splits_for_all_clusters(input_dir, target_dir):
@@ -35,12 +31,8 @@ def get_file_splits_for_all_clusters(input_dir, target_dir):
         if not os.path.isdir(input_path) or not os.path.isdir(target_path):
             continue
 
-        all_input_files = sorted(
-            [f for f in os.listdir(input_path) if f.endswith(".nc")]
-        )
-        all_target_files = sorted(
-            [f for f in os.listdir(target_path) if f.endswith(".nc")]
-        )
+        all_input_files = sorted([f for f in os.listdir(input_path) if f.endswith(".nc")])
+        all_target_files = sorted([f for f in os.listdir(target_path) if f.endswith(".nc")])
 
         train_inputs, val_inputs, test_inputs = [], [], []
         train_targets, val_targets, test_targets = [], [], []
@@ -81,9 +73,7 @@ def load_nc_variables(file_path, var_names):
         return {var: ds[var].values.astype(np.float32) for var in var_names}
 
 
-def process_files_pair(
-    input_files, target_files, output_name_prefix, save_dir, excluded_cluster
-):
+def process_files_pair(input_files, target_files, output_name_prefix, save_dir, excluded_cluster):
     target_vars = ["T_2M", "TOT_PREC"]
     processed_inputs = {var: [] for var in target_vars}
     processed_targets = {var: [] for var in target_vars}
@@ -157,9 +147,7 @@ def normalize(x, stats):
     return (x - stats["mean"]) / stats["std"]
 
 
-def interpolate_input_data(
-    input_dir, split="train", var="T_2M", method="bilinear", scale_factor=8
-):
+def interpolate_input_data(input_dir, split="train", var="T_2M", method="bilinear", scale_factor=8):
     """
     Interpolates normalized input temperature data to a higher resolution.
     (Function body is unchanged)
@@ -184,10 +172,7 @@ def interpolate_input_data(
 
     # Assume input shape is (N, H, W)
     upscaled_data = np.stack(
-        [
-            zoom(sample, zoom=(scale_factor, scale_factor), order=order)
-            for sample in data
-        ]
+        [zoom(sample, zoom=(scale_factor, scale_factor), order=order) for sample in data]
     )
 
     out_fname = f"{split}_{var}_input_normalized_interp{scale_factor}x_{method}.npy"
@@ -221,9 +206,7 @@ def downsample_temperature_data(high_res_data, downscaling_factor, method="bilin
     # Handle both 2D (H, W) and 3D (N, H, W) arrays
     if high_res_data.ndim == 2:
         # For a single 2D image, no parallelization needed
-        downscaled_data = zoom(
-            high_res_data, zoom=(zoom_factor, zoom_factor), order=order
-        )
+        downscaled_data = zoom(high_res_data, zoom=(zoom_factor, zoom_factor), order=order)
     elif high_res_data.ndim == 3:
         # Parallelize processing for each sample in the batch (N, H, W)
         # Using ThreadPoolExecutor as scipy.ndimage.zoom releases the GIL
@@ -233,9 +216,7 @@ def downsample_temperature_data(high_res_data, downscaling_factor, method="bilin
             # The lambda function creates a callable for each sample with fixed zoom_factor and order
             downscaled_samples = list(
                 executor.map(
-                    lambda sample: zoom(
-                        sample, zoom=(zoom_factor, zoom_factor), order=order
-                    ),
+                    lambda sample: zoom(sample, zoom=(zoom_factor, zoom_factor), order=order),
                     high_res_data,
                 )
             )
@@ -291,9 +272,7 @@ def calculate_pooled_training_stats(base_dir, cluster_names, var_names, elev_dir
 
         loc_array = np.load(loc_path)
         if loc_array.size == 0:
-            print(
-                f"Warning: LOCATION array empty for {cluster_name}, skipping elevation."
-            )
+            print(f"Warning: LOCATION array empty for {cluster_name}, skipping elevation.")
             continue
 
         lat, lon = loc_array[0]  # first row
@@ -322,12 +301,14 @@ def calculate_pooled_training_stats(base_dir, cluster_names, var_names, elev_dir
         mean_of_means = np.mean(means)
 
         pooled_std = np.sqrt(mean_of_second_moments - mean_of_means**2)
+        pooled_mean = mean_of_means
 
         final_stats[key] = {
             "pooled_std": float(pooled_std),
+            "pooled_mean": float(pooled_mean),
             "clusters": cluster_stats_dict,
         }
-        print(f"[Pooled] {key}: Pooled Std = {pooled_std:.4f}")
+        print(f"[Pooled] {key}: Pooled Std = {pooled_std:.4f}, Pooled Mean = {pooled_mean:.4f}")
 
     return final_stats
 
@@ -351,9 +332,7 @@ def preprocess_and_save(
                 continue
 
             if f"{var}_input" not in stats_to_use:
-                print(
-                    f"Warning: No stats found for {var}_input. Skipping normalization."
-                )
+                print(f"Warning: No stats found for {var}_input. Skipping normalization.")
                 continue
 
             print(f"Normalizing {fname}...")
@@ -379,9 +358,7 @@ def preprocess_and_save(
 
 
 def main():
-    old_data_dir = (
-        "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/domain_adaptation/"
-    )
+    old_data_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/domain_adaptation/"
     input_dir = os.path.join(
         old_data_dir,
         "T2M_TOTPREC_cropped_gridded_clustered_koppen_geiger_blurred_x8",
@@ -390,9 +367,7 @@ def main():
         old_data_dir,
         "T2M_TOTPREC_cropped_gridded_clustered_koppen_geiger",
     )
-    elev_dir = os.path.join(
-        "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares"
-    )
+    elev_dir = os.path.join("/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/dem_squares")
     save_dir = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/data/clusters_v6"
     var_names = ["T_2M", "TOT_PREC"]
 
@@ -460,9 +435,7 @@ def main():
 
         # Save the specific metadata for this cluster
         if metadata_for_cluster_json:
-            train_stats_path = os.path.join(
-                cluster_raw_dir, "train_scaling_metadata.json"
-            )
+            train_stats_path = os.path.join(cluster_raw_dir, "train_scaling_metadata.json")
             with open(train_stats_path, "w") as f:
                 json.dump(metadata_for_cluster_json, f, indent=4)
             print(f"[✓] Saved training metadata for {cluster_name}")

@@ -12,28 +12,29 @@ def init_weights_kaiming(m):
 
 class SoftmaxConstraintLayer(nn.Module):
     """
-    Implements image-wise mass conservation following Harder et al. (2023):
+    Image-wise mass conservation layer (Harder et al., 2023) using g(y) = y^2.
 
         y_j = g(ỹ_j) / (1/n ∑_i g(ỹ_i)) * x
-
-    with g(y) = exp(y), alternatively y^2.
 
     Args:
         precip_stats (dict): {"mean": float, "std": float} for log1p-normalized precipitation.
         eps (float): Small constant to prevent division by zero.
+        max_val (float): Optional upper bound on g(y) to avoid numerical overflow.
     """
 
-    def __init__(self, precip_stats, eps=1e-6):
+    def __init__(self, precip_stats, eps=1e-6, max_val=1e6):
         super().__init__()
         if precip_stats is None:
             raise ValueError("Precipitation statistics must be provided.")
         self.precip_stats = precip_stats
         self.eps = eps
+        self.max_val = max_val
 
     def forward(self, y_tilde_normalized, x_lr_normalized):
         """
-        y_tilde_normalized: (B, 1, H_hr, W_hr) - HR prediction in normalized log1p space
-        x_lr_normalized:    (B, 1, H_lr, W_lr) - LR input in normalized log1p space
+        Args:
+            y_tilde_normalized: (B, 1, H_hr, W_hr) - HR prediction in normalized log1p space
+            x_lr_normalized:    (B, 1, H_lr, W_lr) - LR input in normalized log1p space
         """
         mean, std = self.precip_stats["mean"], self.precip_stats["std"]
 
@@ -41,22 +42,19 @@ class SoftmaxConstraintLayer(nn.Module):
         y_tilde_log1p = y_tilde_normalized * std + mean
         x_lr_log1p = x_lr_normalized * std + mean
 
-        # Back to physical precipitation (≥0)
-        y_tilde_phys = torch.expm1(y_tilde_log1p)  # HR prediction in mm
-        x_lr_phys = torch.expm1(x_lr_log1p)  # LR input in mm
+        # Convert back to physical precipitation (≥0)
+        y_tilde_phys = torch.expm1(y_tilde_log1p)
+        x_lr_phys = torch.expm1(x_lr_log1p)
 
-        # Apply g(y) = exp(y)
-        g_y = torch.exp(y_tilde_phys)
-        # Alternatively, apply g(y) = y^2
-        # g_y = y_tilde_phys.pow(2)
+        # Apply g(y) = y^2 with clamping to avoid overflow
+        g_y = torch.clamp(y_tilde_phys.pow(2), min=self.eps, max=self.max_val)
 
-        # Compute mean of g(y) over the HR image
+        # Compute mean of g(y) over HR image
         g_mean = g_y.mean(dim=(-2, -1), keepdim=True) + self.eps
 
-        # Scale factor (image-wise conservation)
-        # Multiply by the LR *total sum* to enforce conservation
+        # Compute scale factor for mass conservation
         sum_lr = x_lr_phys.sum(dim=(-2, -1), keepdim=True)
-        scale = sum_lr / (g_mean * g_y.shape[-2] * g_y.shape[-1])  # (B,1,1,1)
+        scale = sum_lr / (g_mean * g_y.shape[-2] * g_y.shape[-1])
 
         # Apply scaling
         y_constrained_phys = g_y * scale
@@ -320,9 +318,7 @@ class HomoscedasticUNet_BN(nn.Module):
 class HomoscedasticUNet_Dropout(nn.Module):
     """Homoscedastic U-Net with dropout for temperature & precipitation downscaling."""
 
-    def __init__(
-        self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25
-    ):
+    def __init__(self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25):
         """
         Args:
             in_channels: temperature, precipitation, elevation, land mask
@@ -446,9 +442,7 @@ class HomoscedasticUNet_Dropout(nn.Module):
 
 
 class HomoscedasticUNet_BN_Dropout(nn.Module):
-    def __init__(
-        self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25
-    ):
+    def __init__(self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25):
         super().__init__()
 
         # Encoder blocks with dropout
@@ -1030,9 +1024,7 @@ class UNet_Trainable_Noise(nn.Module):
         super(UNet_Trainable_Noise, self).__init__()
 
         # Input noise parameters (learned)
-        self.input_log_var = nn.Parameter(
-            torch.zeros(1)
-        )  # log variance for input noise
+        self.input_log_var = nn.Parameter(torch.zeros(1))  # log variance for input noise
 
         # Define encoding layers
         self.encoder1 = self.conv_block(2, 64)  # 1 variable + 1 elevation channel
@@ -1065,9 +1057,7 @@ class UNet_Trainable_Noise(nn.Module):
     def forward(self, variable, elevation):
         # Apply multiplicative Gaussian noise in training mode
         if self.training:
-            input_std = torch.exp(
-                0.5 * self.input_log_var
-            )  # Compute std from log variance
+            input_std = torch.exp(0.5 * self.input_log_var)  # Compute std from log variance
             noise = torch.randn_like(variable) * input_std  # Sample noise
             variable_noisy = variable * (1 + noise)  # Multiplicative noise
         else:
@@ -1131,18 +1121,12 @@ def compute_mmd(source_features, target_features, kernel="rbf", sigma=None):
         return torch.exp(-dists / (2 * sigma**2))  # RBF kernel
 
     # Normalize features to prevent large magnitude issues
-    source_features = source_features / (
-        source_features.norm(dim=1, keepdim=True) + 1e-6
-    )
-    target_features = target_features / (
-        target_features.norm(dim=1, keepdim=True) + 1e-6
-    )
+    source_features = source_features / (source_features.norm(dim=1, keepdim=True) + 1e-6)
+    target_features = target_features / (target_features.norm(dim=1, keepdim=True) + 1e-6)
 
     # Compute adaptive sigma if not provided
     if sigma is None:
-        pairwise_dists = torch.norm(
-            source_features[:, None] - target_features, dim=2, p=2
-        )
+        pairwise_dists = torch.norm(source_features[:, None] - target_features, dim=2, p=2)
         sigma = torch.median(pairwise_dists).detach().item()
         sigma = max(sigma, 1e-3)  # Avoid very small sigma
 

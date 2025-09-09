@@ -6,17 +6,15 @@ import yaml
 import argparse
 import pandas as pd
 import optuna
-import gc
+
+# import gc
 import json
 import numpy as np
-from data.dataloader import (
-    get_single_cluster_dataloader,
-    get_clusters_dataloader,
-    get_domain_adaptation_dataloaders,
-)
+from data.dataloader import get_single_cluster_dataloader, get_clusters_dataloader
 from src.models import unet
 from src.train import train_model, objective
-from src.train_mmd import train_model_mmd, objective_mmd
+
+# from src.train_mmd import train_model_mmd, objective_mmd
 from src.logger import setup_logger
 
 
@@ -47,42 +45,27 @@ def main():
 
     # Get argument for local or curnagl config
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config", type=str, default="curnagl", help="Local or curnagl config"
-    )
-    parser.add_argument(
-        "--resume_exp", type=str, default=None, help="Local or curnagl config"
-    )
+    parser.add_argument("--config", type=str, default="curnagl", help="Local or curnagl config")
+    parser.add_argument("--resume_exp", type=str, default=None, help="Local or curnagl config")
     parser.add_argument("--model", type=str, default=None, help="Model name")
-    parser.add_argument(
-        "--method",
-        type=str,
-        default="cross-val",
-        help="Method name (cross-val, all, mmd)",
-    )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Experiment seed, default 42."
-    )
+    parser.add_argument("--method", type=str, default="single", help="Method name")
+    parser.add_argument("--seed", type=int, default=42, help="Experiment seed, default 42.")
     args = parser.parse_args()
     config = "config_local" if args.config == "local" else "config_curnagl"
     resume_exp = args.resume_exp
     if args.model is None:
-        print("INFO: No model specified. Using cross-val.")
+        print("INFO: No model specified. Using single.")
         return
     model_name = args.model
     if args.method not in ["all", "cross-val", "mmd", "single"]:
-        print(
-            f"INFO: Method {args.method} not recognized. Please use 'cross-val', 'all', 'mmd', or 'single'."
-        )
+        print(f"INFO: Method {args.method} not recognized.")
         return
     method = args.method
 
     # Experiment creation
     if resume_exp is None:
         # Load local config
-        config_path = os.path.join(
-            os.path.dirname(__file__), "configs", f"{config}.yaml"
-        )
+        config_path = os.path.join(os.path.dirname(__file__), "configs", f"{config}.yaml")
         with open(config_path, "r") as file:
             config = yaml.safe_load(file)
         exp_id = generate_experiment_id()
@@ -100,9 +83,7 @@ def main():
             file.write(f"EXPERIMENT_MODEL: {model_name}\n")
     else:
         if os.path.isdir(resume_exp):
-            print(
-                f"EXP: Found experiment at {resume_exp} already exists. Resuming training."
-            )
+            print(f"EXP: Found experiment at {resume_exp} already exists. Resuming training.")
         else:
             print(f"EXP: Experiment {resume_exp} does not exist. Retry.")
             return
@@ -116,13 +97,9 @@ def main():
         config = yaml.safe_load(file)
 
     # Setup logger
-    print(
-        f"EXP: Setting up logger at {output_dir} with ID {exp_id} for model {model_name} using method {method}."
-    )
+    print(f"EXP: Setting up logger at {output_dir} with ID {exp_id} for model {model_name} using method {method}.")
     logger = setup_logger(output_dir, "experiment")
-    logger.info(
-        f"Starting cross-validation experiment (EXPERIMENT ID: {exp_id}, TIME: {start_time})"
-    )
+    logger.info(f"Starting cross-validation experiment (EXPERIMENT ID: {exp_id}, TIME: {start_time})")
     logger.info(f"EXPERIMENT ID: {exp_id}")
     logger.info(f"EXPERIMENT OUTPUT DIRECTORY: {output_dir}")
     logger.info(f"EXPERIMENT START TIME: {start_time}")
@@ -132,23 +109,17 @@ def main():
     logger.info(f"  Method: {method}")
     logger.info(f"  Resume: {resume_exp}")
     logger.info(f"  Config path: {config_path}")
-    logger.info(f"  Config dump: \n{yaml.dump(config, sort_keys=False)}")
+    # logger.info(f"  Config dump: \n{yaml.dump(config, sort_keys=False)}")
     logger.info("---------------------------------")
 
     # Set random seed for reproducibility
-    set_seed(42)
+    set_seed(args.seed)
 
     # Load data path and cluster names
     data_path = config["paths"]["data_path"]
     cluster_names = config["paths"]["clusters"]
     if cluster_names is None:
-        cluster_names = sorted(
-            [
-                c
-                for c in os.listdir(data_path)
-                if os.path.isdir(os.path.join(data_path, c))
-            ]
-        )
+        cluster_names = sorted([c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))])
 
     # Device configuration
     if config["training"]["load_data_on_gpu"]:
@@ -177,7 +148,6 @@ def main():
             logger.info(f"Loading normalization stats from {statistics_path}")
             with open(statistics_path, "r") as f:
                 stats = json.load(f)
-                pretty_stats = json.dumps(stats, indent=4)
             precip_stats = {
                 "mean": stats["TOT_PREC_input"]["clusters"][cluster_to_process]["mean"],
                 "std": stats["TOT_PREC_input"]["pooled_std"],
@@ -185,12 +155,10 @@ def main():
 
             # Hyperparameter optimization
             if config["optimization"]["num_epochs"] != 0:
-                logger.info(
-                    f"OPTIMIZATION: Optimizing hyperparameters for {model_name}..."
-                )
+                logger.info(f"OPTIMIZATION: Optimizing hyperparameters for {model_name}...")
                 num_epochs = config["optimization"]["num_epochs"]
 
-                logger.info(f"MODEL: Loading model: {model_name} ...")
+                logger.info(f"MODEL: Loading model: {model_name} ... with {precip_stats}")
                 model = getattr(unet, model_name)(precip_stats=precip_stats)
                 if model is None:
                     logger.info(f"MODEL: Model {model_name} not found.")
@@ -204,9 +172,7 @@ def main():
                 model.apply(unet.init_weights_kaiming)
                 model.to(device)
 
-                logger.info(
-                    f"OPTIMIZATION: Optimizing model for {cluster_to_process} ..."
-                )
+                logger.info(f"OPTIMIZATION: Optimizing model for {cluster_to_process} ...")
                 study = optuna.create_study(direction="minimize")
                 study.optimize(
                     lambda trial: objective(
@@ -234,16 +200,15 @@ def main():
                     )
                     ds["loss_params"].update(
                         {
-                            "lr_loss": study.best_params["lr_loss"],
+                            "lr_loss_T": study.best_params["lr_loss_T"],
+                            "lr_loss_P": study.best_params["lr_loss_P"],
                             "weight_decay": 0.0,
                         }
                     )
                 with open(config_path, "w") as f:
                     yaml.dump(config, f, sort_keys=False)
             else:
-                logger.info(
-                    "OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0."
-                )
+                logger.info("OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0.")
 
             # Reload config
             with open(config_path, "r") as file:
@@ -251,7 +216,7 @@ def main():
 
             # Training
             logger.info(f"TRAINING: Starting training for method: {method}")
-            logger.info(f"MODEL: Loading model: {model_name} ... with {pretty_stats}")
+            logger.info(f"MODEL: Loading model: {model_name} ... with {precip_stats}")
             model = getattr(unet, model_name)(precip_stats=precip_stats)
             if torch.cuda.device_count() > 1:
                 logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
@@ -278,7 +243,7 @@ def main():
 
             train_model(
                 model=model,
-                excluding_cluster=cluster_to_process,
+                cluster_name=cluster_to_process,
                 num_epochs=config["training"]["num_epochs"],
                 train_loader=loaders["train"],
                 val_loader=loaders["val"],
@@ -288,9 +253,7 @@ def main():
             )
 
             logger.info(f"TRAINING: Finished training on cluster: {cluster_to_process}")
-            logger.info(
-                f"TRAINING: Emptying GPU memory for cluster: {cluster_to_process}"
-            )
+            logger.info(f"TRAINING: Emptying GPU memory for cluster: {cluster_to_process}")
 
     if method == "all":
 
@@ -298,13 +261,24 @@ def main():
         cluster_to_process = "all_clusters"
         single_cluster = False
 
+        # Load statistics for UNet
+        statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
+        logger.info(f"Loading normalization stats from {statistics_path}")
+        with open(statistics_path, "r") as f:
+            stats = json.load(f)
+
+        precip_stats = {
+            "mean": stats["TOT_PREC_input"]["pooled_mean"],
+            "std": stats["TOT_PREC_input"]["pooled_std"],
+        }
+
         # Hyperparameter optimization
         if config["optimization"]["num_epochs"] != 0:
             logger.info(f"OPTIMIZATION: Optimizing hyperparameters for {model_name}...")
             num_epochs = config["optimization"]["num_epochs"]
 
-            logger.info(f"MODEL: Loading model: {model_name} ...")
-            model = getattr(unet, model_name)()
+            logger.info(f"MODEL: Loading model: {model_name} ... with {precip_stats}")
+            model = getattr(unet, model_name)(precip_stats=precip_stats)
             if model is None:
                 logger.info(f"MODEL: Model {model_name} not found.")
                 return
@@ -336,24 +310,33 @@ def main():
             )
 
             if cluster_to_process in config["domain_specific"]:
-                config["domain_specific"][cluster_to_process][
-                    "optimizer_params"
-                ].update(study.best_params)
+                ds = config["domain_specific"][cluster_to_process]
+                ds["optimizer_params"].update(
+                    {
+                        "lr_model": study.best_params["lr_model"],
+                        "weight_decay": study.best_params["weight_decay"],
+                    }
+                )
+                ds["loss_params"].update(
+                    {
+                        "lr_loss_T": study.best_params["lr_loss_T"],
+                        "lr_loss_P": study.best_params["lr_loss_P"],
+                        "weight_decay": 0.0,
+                    }
+                )
             with open(config_path, "w") as f:
                 yaml.dump(config, f, sort_keys=False)
         else:
-            logger.info(
-                "OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0."
-            )
+            logger.info("OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0.")
 
         # Reload config
         with open(config_path, "r") as file:
             config = yaml.safe_load(file)
 
         # Training
-        logger.info(f"TRAINING: Starting training for method: {method}")
-        logger.info(f"MODEL: Loading model: {model_name} ...")
-        model = getattr(unet, model_name)()
+        logger.info(f"TRAINING: Starting training for method {method}")
+        logger.info(f"MODEL: Loading model: {model_name} ... with {precip_stats}")
+        model = getattr(unet, model_name)(precip_stats=precip_stats)
         if torch.cuda.device_count() > 1:
             logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
             model = torch.nn.DataParallel(model)
@@ -368,8 +351,8 @@ def main():
         loaders = get_clusters_dataloader(
             data_path=config["paths"]["data_path"],
             elev_dir=config["paths"]["elev_path"],
-            excluded_cluster=cluster_to_process,
             cluster_names=cluster_names,
+            vars=config["experiment"]["vars"],
             batch_size=config["training"]["batch_size"],
             num_workers=config["training"]["num_workers"],
             use_theta_e=config["training"]["use_theta_e"],
@@ -379,7 +362,7 @@ def main():
 
         train_model(
             model=model,
-            excluding_cluster=cluster_to_process,
+            cluster_name=cluster_to_process,
             num_epochs=config["training"]["num_epochs"],
             train_loader=loaders["train"],
             val_loader=loaders["val"],
@@ -391,244 +374,225 @@ def main():
         logger.info(f"TRAINING: Finished training on cluster: {cluster_to_process}")
         logger.info(f"TRAINING: Emptying GPU memory for cluster: {cluster_to_process}")
 
-    if method == "cross-val":
+    # if method == "cross-val":
 
-        logger.info(
-            "METHOD: 'cross-val' will train on all clusters in a cross validation fashion."
-        )
-        clusters_to_process = cluster_names
+    #     logger.info("METHOD: 'cross-val' will train on all clusters in a cross validation fashion.")
+    #     clusters_to_process = cluster_names
 
-        # Hyperparameter optimization
-        if config["optimization"]["num_epochs"] != 0:
-            logger.info(f"OPTIMIZATION: Optimizing hyperparameters for {model_name}...")
-            num_epochs = config["optimization"]["num_epochs"]
-            for cluster in clusters_to_process:
-                logger.info(f"MODEL: Loading model: {model_name} ...")
-                model = getattr(unet, model_name)()
-                if model is None:
-                    logger.info(f"MODEL: Model {model_name} not found.")
-                    return
-                if torch.cuda.device_count() > 1:
-                    logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
-                    model = torch.nn.DataParallel(model)
-                else:
-                    logger.info("MODEL: Using single GPU or CPU.")
-                logger.info(f"MODEL: Moving model to device: {device} ...")
-                model.apply(unet.init_weights_kaiming)
-                model.to(device)
+    #     # Hyperparameter optimization
+    #     if config["optimization"]["num_epochs"] != 0:
+    #         logger.info(f"OPTIMIZATION: Optimizing hyperparameters for {model_name}...")
+    #         num_epochs = config["optimization"]["num_epochs"]
+    #         for cluster in clusters_to_process:
+    #             # Load model on device (multi-GPU if available)
+    #             logger.info(f"MODEL: Loading model: {model_name} ...")
+    #             model = getattr(unet, model_name)()
+    #             if model is None:
+    #                 logger.info(f"MODEL: Model {model_name} not found.")
+    #                 return
+    #             if torch.cuda.device_count() > 1:
+    #                 logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
+    #                 model = torch.nn.DataParallel(model)
+    #             else:
+    #                 logger.info("MODEL: Using single GPU or CPU.")
+    #             logger.info(f"MODEL: Moving model to device: {device} ...")
+    #             model.apply(unet.init_weights_kaiming)
+    #             model.to(device)
 
-                logger.info(f"OPTIMIZATION: Optimizing model excluding {cluster} ...")
-                study = optuna.create_study(direction="minimize")
-                study.optimize(
-                    lambda trial: objective(
-                        trial,
-                        model,
-                        num_epochs,
-                        cluster,
-                        cluster_names,
-                        config,
-                        device,
-                        device_data,
-                        config["training"]["augmentation"],
-                    ),
-                    n_trials=config["optimization"]["num_trials"],
-                )
+    #             logger.info(f"OPTIMIZATION: Optimizing model excluding {cluster} ...")
+    #             study = optuna.create_study(direction="minimize")
+    #             study.optimize(
+    #                 lambda trial: objective(
+    #                     trial,
+    #                     model,
+    #                     num_epochs,
+    #                     cluster,
+    #                     cluster_names,
+    #                     config,
+    #                     device,
+    #                     device_data,
+    #                     config["training"]["augmentation"],
+    #                 ),
+    #                 n_trials=config["optimization"]["num_trials"],
+    #             )
 
-                if cluster in config["domain_specific"]:
-                    config["domain_specific"][cluster]["optimizer_params"].update(
-                        study.best_params
-                    )
-                with open(config_path, "w") as f:
-                    yaml.dump(config, f, sort_keys=False)
-        else:
-            logger.info(
-                "OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0."
-            )
+    #             if cluster in config["domain_specific"]:
+    #                 config["domain_specific"][cluster]["optimizer_params"].update(study.best_params)
+    #             with open(config_path, "w") as f:
+    #                 yaml.dump(config, f, sort_keys=False)
+    #     else:
+    #         logger.info("OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is 0.")
 
-        # Reload config
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
+    #     # Reload config
+    #     with open(config_path, "r") as file:
+    #         config = yaml.safe_load(file)
 
-        # Training
-        logger.info(f"TRAINING: Starting training for method: {method}")
-        for excluded_cluster in clusters_to_process:
-            logger.info(f"MODEL: Loading model: {model_name} ...")
-            model = getattr(unet, model_name)()
-            if torch.cuda.device_count() > 1:
-                logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
-                model = torch.nn.DataParallel(model)
-            else:
-                logger.info("MODEL: Using single GPU or CPU.")
-            logger.info(f"MODEL: Moving model to device: {device} ...")
-            model.apply(unet.init_weights_kaiming)
-            model.to(device)
+    #     # Training
+    #     logger.info(f"TRAINING: Starting training for method: {method}")
+    #     for excluded_cluster in clusters_to_process:
+    #         logger.info(f"MODEL: Loading model: {model_name} ...")
+    #         model = getattr(unet, model_name)()
+    #         if torch.cuda.device_count() > 1:
+    #             logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
+    #             model = torch.nn.DataParallel(model)
+    #         else:
+    #             logger.info("MODEL: Using single GPU or CPU.")
+    #         logger.info(f"MODEL: Moving model to device: {device} ...")
+    #         model.apply(unet.init_weights_kaiming)
+    #         model.to(device)
 
-            logger.info(f"TRAINING: Excluding cluster: {excluded_cluster}")
-            loaders = get_clusters_dataloader(
-                data_path=config["paths"]["data_path"],
-                elev_dir=config["paths"]["elev_path"],
-                excluded_cluster=excluded_cluster,
-                cluster_names=cluster_names,
-                batch_size=config["training"]["batch_size"],
-                num_workers=config["training"]["num_workers"],
-                use_theta_e=config["training"]["use_theta_e"],
-                device=device_data,
-                augment=config["training"]["augmentation"],
-            )
+    #         logger.info(f"TRAINING: Excluding cluster: {excluded_cluster}")
+    #         loaders = get_clusters_dataloader(
+    #             data_path=config["paths"]["data_path"],
+    #             elev_dir=config["paths"]["elev_path"],
+    #             excluded_cluster=excluded_cluster,
+    #             cluster_names=cluster_names,
+    #             batch_size=config["training"]["batch_size"],
+    #             num_workers=config["training"]["num_workers"],
+    #             use_theta_e=config["training"]["use_theta_e"],
+    #             device=device_data,
+    #             augment=config["training"]["augmentation"],
+    #         )
 
-            train_model(
-                model=model,
-                excluding_cluster=excluded_cluster,
-                num_epochs=config["training"]["num_epochs"],
-                train_loader=loaders["train"],
-                val_loader=loaders["val"],
-                config=config,
-                device=device,
-                save_path=output_dir,
-            )
+    #         train_model(
+    #             model=model,
+    #             excluding_cluster=excluded_cluster,
+    #             num_epochs=config["training"]["num_epochs"],
+    #             train_loader=loaders["train"],
+    #             val_loader=loaders["val"],
+    #             config=config,
+    #             device=device,
+    #             save_path=output_dir,
+    #         )
 
-            logger.info(
-                f"TRAINING: Finished training excluding cluster: {excluded_cluster}"
-            )
-            logger.info(
-                f"TRAINING: Emptying GPU memory for cluster: {excluded_cluster}"
-            )
-            for split in ["train", "val", "test"]:
-                dataset = loaders[split].dataset
-                for d in dataset.datasets:
-                    d.unload_from_gpu()
+    #         logger.info(f"TRAINING: Finished training excluding cluster: {excluded_cluster}")
+    #         logger.info(f"TRAINING: Emptying GPU memory for cluster: {excluded_cluster}")
+    #         for split in ["train", "val", "test"]:
+    #             dataset = loaders[split].dataset
+    #             for d in dataset.datasets:
+    #                 d.unload_from_gpu()
 
-            del model, loaders
-            torch.cuda.empty_cache()
-            gc.collect()
-            logger.info(f"TRAINING: GPU memory emptied for cluster: {excluded_cluster}")
+    #         del model, loaders
+    #         torch.cuda.empty_cache()
+    #         gc.collect()
+    #         logger.info(f"TRAINING: GPU memory emptied for cluster: {excluded_cluster}")
 
-    if method == "mmd":
+    # if method == "mmd":
 
-        logger.info(f" *** TRAINING: Performing domain adaptation with {method}.")
+    #     logger.info(f" *** TRAINING: Performing domain adaptation with {method}.")
 
-        # Optimize hyperparameters
-        if config["optimization"]["num_epochs"] != 0:
-            logger.info(
-                f" *** OPTIMIZATION: Optimizing hyperparameters for {model_name}..."
-            )
-            for cluster in cluster_names:
-                # Load model on device (multi-GPU if available)
-                logger.info(f"MODEL: Loading model: {model_name} ...")
-                model = getattr(unet, model_name)()
-                if model is None:
-                    logger.info(
-                        f"MODEL: Model {model_name} not found in unet module. Please check the model name."
-                    )
-                    return
-                if torch.cuda.device_count() > 1:
-                    logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
-                    model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
-                else:
-                    logger.info("MODEL: Using single GPU or CPU.")
-                logger.info(f"MODEL: Moving model to device: {device} ...")
-                model.apply(unet.init_weights_kaiming)
-                model.to(device)
+    #     # Optimize hyperparameters
+    #     if config["optimization"]["num_epochs"] != 0:
+    #         logger.info(f" *** OPTIMIZATION: Optimizing hyperparameters for {model_name}...")
+    #         for cluster in cluster_names:
+    #             # Load model on device (multi-GPU if available)
+    #             logger.info(f"MODEL: Loading model: {model_name} ...")
+    #             model = getattr(unet, model_name)()
+    #             if model is None:
+    #                 logger.info(
+    #                     f"MODEL: Model {model_name} not found in unet module. Please check the model name."
+    #                 )
+    #                 return
+    #             if torch.cuda.device_count() > 1:
+    #                 logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
+    #                 model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
+    #             else:
+    #                 logger.info("MODEL: Using single GPU or CPU.")
+    #             logger.info(f"MODEL: Moving model to device: {device} ...")
+    #             model.apply(unet.init_weights_kaiming)
+    #             model.to(device)
 
-                logger.info(
-                    f"OPTIMIZATION: Optimizing model excluding {cluster} for training ..."
-                )
-                num_epochs = config["optimization"]["num_epochs"]
-                study = optuna.create_study(direction="minimize")
-                study.optimize(
-                    lambda trial: objective_mmd(
-                        trial,
-                        model,
-                        num_epochs,
-                        cluster,
-                        cluster_names,
-                        config,
-                        device,
-                        device_data,
-                        config["training"]["augmentation"],
-                    ),
-                    n_trials=config["optimization"]["num_trials"],
-                )
+    #             logger.info(f"OPTIMIZATION: Optimizing model excluding {cluster} for training ...")
+    #             num_epochs = config["optimization"]["num_epochs"]
+    #             study = optuna.create_study(direction="minimize")
+    #             study.optimize(
+    #                 lambda trial: objective_mmd(
+    #                     trial,
+    #                     model,
+    #                     num_epochs,
+    #                     cluster,
+    #                     cluster_names,
+    #                     config,
+    #                     device,
+    #                     device_data,
+    #                     config["training"]["augmentation"],
+    #                 ),
+    #                 n_trials=config["optimization"]["num_trials"],
+    #             )
 
-                # Update params
-                if cluster in config["domain_specific"]:
-                    config["domain_specific"][cluster]["optimizer_params"].update(
-                        study.best_params
-                    )
-                with open(config_path, "w") as f:
-                    yaml.dump(config, f, sort_keys=False)
-            logger.info(" *** OPTIMIZATION: Done.")
-        else:
-            logger.info(
-                " *** OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is set to 0."
-            )
+    #             # Update params
+    #             if cluster in config["domain_specific"]:
+    #                 config["domain_specific"][cluster]["optimizer_params"].update(study.best_params)
+    #             with open(config_path, "w") as f:
+    #                 yaml.dump(config, f, sort_keys=False)
+    #         logger.info(" *** OPTIMIZATION: Done.")
+    #     else:
+    #         logger.info(
+    #             " *** OPTIMIZATION: Skipping hyperparameter optimization as num_epochs is set to 0."
+    #         )
 
-        # Reload config
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
+    #     # Reload config
+    #     with open(config_path, "r") as file:
+    #         config = yaml.safe_load(file)
 
-        # Training
-        logger.info(
-            f" *** TRAINING: Training on all clusters in cross-validation fashion for {model_name}."
-        )
-        for excluded_cluster in cluster_names:
+    #     # Training
+    #     logger.info(
+    #         f" *** TRAINING: Training on all clusters in cross-validation fashion for {model_name}."
+    #     )
+    #     for excluded_cluster in cluster_names:
 
-            # Load model on device (multi-GPU if available)
-            logger.info(f"MODEL: Loading model: {model_name} ...")
-            model = getattr(unet, model_name)()
-            if torch.cuda.device_count() > 1:
-                logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
-                model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
-            else:
-                logger.info("MODEL: Using single GPU or CPU.")
-            logger.info(f"MODEL: Moving model to device: {device} ...")
-            model.apply(unet.init_weights_kaiming)
-            model.to(device)
+    #         # Load model on device (multi-GPU if available)
+    #         logger.info(f"MODEL: Loading model: {model_name} ...")
+    #         model = getattr(unet, model_name)()
+    #         if torch.cuda.device_count() > 1:
+    #             logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
+    #             model = torch.nn.DataParallel(model)  # Wrap model for multi-GPU
+    #         else:
+    #             logger.info("MODEL: Using single GPU or CPU.")
+    #         logger.info(f"MODEL: Moving model to device: {device} ...")
+    #         model.apply(unet.init_weights_kaiming)
+    #         model.to(device)
 
-            # Get dataloaders for all clusters excluding the current one
-            logger.info(f"TRAINING: Excluding cluster: {excluded_cluster}")
-            loaders = get_domain_adaptation_dataloaders(
-                data_path=config["paths"]["data_path"],
-                elev_dir=config["paths"]["elev_path"],
-                target_cluster=excluded_cluster,
-                cluster_names=cluster_names,
-                batch_size=config["training"]["batch_size"],
-                num_workers=config["training"]["num_workers"],
-                use_theta_e=config["training"]["use_theta_e"],
-                device=device_data,
-                augment=config["training"]["augmentation"],
-            )
+    #         # Get dataloaders for all clusters excluding the current one
+    #         logger.info(f"TRAINING: Excluding cluster: {excluded_cluster}")
+    #         loaders = get_domain_adaptation_dataloaders(
+    #             data_path=config["paths"]["data_path"],
+    #             elev_dir=config["paths"]["elev_path"],
+    #             target_cluster=excluded_cluster,
+    #             cluster_names=cluster_names,
+    #             batch_size=config["training"]["batch_size"],
+    #             num_workers=config["training"]["num_workers"],
+    #             use_theta_e=config["training"]["use_theta_e"],
+    #             device=device_data,
+    #             augment=config["training"]["augmentation"],
+    #         )
 
-            train_model_mmd(
-                model=model,
-                excluding_cluster=excluded_cluster,
-                num_epochs=config["training"]["num_epochs"],
-                source_train_loader=loaders["source"]["train"],
-                target_train_loader=loaders["target"]["train"],
-                source_val_loader=loaders["source"]["val"],
-                config=config,
-                device=device,
-                save_path=output_dir,
-            )
+    #         train_model_mmd(
+    #             model=model,
+    #             excluding_cluster=excluded_cluster,
+    #             num_epochs=config["training"]["num_epochs"],
+    #             source_train_loader=loaders["source"]["train"],
+    #             target_train_loader=loaders["target"]["train"],
+    #             source_val_loader=loaders["source"]["val"],
+    #             config=config,
+    #             device=device,
+    #             save_path=output_dir,
+    #         )
 
-            # Empty gpu memory
-            logger.info(
-                f"TRAINING: Finished training excluding cluster: {excluded_cluster}"
-            )
-            logger.info(
-                f"TRAINING: Emptying GPU memory for cluster: {excluded_cluster}"
-            )
-            for split in ["train", "val", "test"]:
-                source_ds = loaders["source"][split].dataset
-                for d in source_ds.datasets:
-                    d.unload_from_gpu()
-                target_ds = loaders["target"][split].dataset
-                target_ds.unload_from_gpu()
-            del model, loaders
-            # Empty GPU memory
-            torch.cuda.empty_cache()
-            gc.collect()
-            logger.info(f"TRAINING: GPU memory emptied for cluster: {excluded_cluster}")
+    #         # Empty gpu memory
+    #         logger.info(f"TRAINING: Finished training excluding cluster: {excluded_cluster}")
+    #         logger.info(f"TRAINING: Emptying GPU memory for cluster: {excluded_cluster}")
+    #         for split in ["train", "val", "test"]:
+    #             source_ds = loaders["source"][split].dataset
+    #             for d in source_ds.datasets:
+    #                 d.unload_from_gpu()
+    #             target_ds = loaders["target"][split].dataset
+    #             target_ds.unload_from_gpu()
+    #         del model, loaders
+    #         # Empty GPU memory
+    #         torch.cuda.empty_cache()
+    #         gc.collect()
+    #         logger.info(f"TRAINING: GPU memory emptied for cluster: {excluded_cluster}")
 
     logger.info("(**************************************************************) ")
     logger.info("(***) TRAINING: All clusters trained. Experiment completed.(***) ")

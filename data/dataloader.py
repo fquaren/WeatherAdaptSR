@@ -52,6 +52,7 @@ def load_or_compute_stats(train_clusters, stats_path):
     return stats
 
 
+# Single cluster dataloader
 def get_single_cluster_dataloader(
     data_path,
     elev_dir,
@@ -118,15 +119,9 @@ def get_single_cluster_dataloader(
         **common_args,
     )
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     LOGGER.info(
         f"DATALOADER: Done. \
@@ -137,279 +132,372 @@ def get_single_cluster_dataloader(
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
 
+# Multiple clusters dataloader (all clusters combined)
 def get_clusters_dataloader(
     data_path,
     elev_dir,
-    excluded_cluster,
     cluster_names,
+    vars,
     batch_size=8,
     num_workers=1,
     use_theta_e=False,
     device="cpu",
-    stats_path="crossval_normalization_stats.json",
+    stats_path="train_scaling_metadata.json",
     augment=False,
 ):
     """
-    Load dataloaders with global normalization and optional augmentation.
+    Load dataloaders combining all clusters together.
+
+    Args:
+        data_path: path to cluster data
+        elev_dir: path to elevation data
+        cluster_names: list of clusters to load
+        batch_size: batch size for evaluation
+        num_workers: dataloader workers
+        use_theta_e: whether to use theta_e
+        device: CPU or GPU
+        stats_path: normalization stats filename (assumes pooled stats available)
+        augment: apply data augmentation if True
     """
+    LOGGER.info(f"DATALOADER: Loading ALL clusters dataloaders: {cluster_names}")
 
-    LOGGER.info(
-        f"DATALOADER: Creating dataloaders from all clusters except '{excluded_cluster}'..."
-    )
-
-    # Preload raw datasets to compute statistics
-    raw_train_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="train",
-            use_theta_e=use_theta_e,
-            device=device,
-            augment=False,
-        )
-        for cluster in cluster_names
-        if cluster != excluded_cluster
-    ]
-
-    LOGGER.info(
-        f"DATALOADER: Computing normalization statistics for {len(raw_train_clusters)} clusters..."
-    )
-    stats = load_or_compute_stats(
-        raw_train_clusters,
-        stats_path=os.path.join(data_path, excluded_cluster, stats_path),
-    )
-    LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
+    # Assumes pooled normalization stats are stored once (not per-cluster)
+    statistics_path = os.path.join(data_path, stats_path)
+    LOGGER.info(f"Loading normalization stats from {statistics_path}")
+    with open(statistics_path, "r") as f:
+        stats = json.load(f)
+        pretty_stats = json.dumps(stats, indent=4)
+        LOGGER.info(f"DATALOADER: Normalization stats:\n{pretty_stats}")
 
     common_args = {
-        "temp_mean": stats["temp_mean"],
-        "temp_std": stats["temp_std"],
-        "elev_mean": stats["elev_mean"],
-        "elev_std": stats["elev_std"],
+        "vars": vars,
+        "elev_mean": stats["elevation"]["mean"],
+        "elev_std": stats["elevation"]["std"],
         "use_theta_e": use_theta_e,
         "device": device,
     }
 
-    # Load datasets
-    train_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="train",
-            augment=augment,
-            **common_args,
+    # Load datasets for all clusters
+    train_datasets, val_datasets, test_datasets = [], [], []
+    for cname in cluster_names:
+        LOGGER.info(f" - Adding cluster '{cname}'")
+        train_datasets.append(
+            SingleVariableDataset_v8(
+                os.path.join(data_path, cname),
+                elev_dir,
+                split="train",
+                augment=augment,
+                **common_args,
+            )
         )
-        for cluster in cluster_names
-        if cluster != excluded_cluster
-    ]
-
-    val_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="val",
-            augment=False,
-            **common_args,
+        val_datasets.append(
+            SingleVariableDataset_v8(
+                os.path.join(data_path, cname),
+                elev_dir,
+                split="val",
+                augment=augment,
+                **common_args,
+            )
         )
-        for cluster in cluster_names
-        if cluster != excluded_cluster
-    ]
-
-    test_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="test",
-            augment=False,
-            **common_args,
+        test_datasets.append(
+            SingleVariableDataset_v8(
+                os.path.join(data_path, cname),
+                elev_dir,
+                split="test",
+                augment=augment,
+                **common_args,
+            )
         )
-        for cluster in cluster_names
-        if cluster != excluded_cluster
-    ]
 
-    # Wrap in dataloaders
-    LOGGER.info("DATALOADER: Creating dataloaders...")
-    train_dataset = ConcatDataset(train_clusters)
-    val_dataset = ConcatDataset(val_clusters)
-    test_dataset = ConcatDataset(test_clusters)
+    # Concatenate across clusters
+    train_dataset = ConcatDataset(train_datasets)
+    val_dataset = ConcatDataset(val_datasets)
+    test_dataset = ConcatDataset(test_datasets)
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     LOGGER.info(
-        f"DATALOADER: Done. \
-            Train size: {len(train_dataset)} \
-            Val size: {len(val_dataset)} \
-            Test size: {len(test_dataset)}"
+        f"DATALOADER: Done. "
+        f"Train size: {len(train_dataset)} | "
+        f"Val size: {len(val_dataset)} | "
+        f"Test size: {len(test_dataset)}"
     )
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
 
-def get_domain_adaptation_dataloaders(
-    data_path,
-    elev_dir,
-    target_cluster,
-    cluster_names,
-    batch_size=8,
-    num_workers=1,
-    use_theta_e=False,
-    device="cpu",
-    stats_path="da_normalization_stats.json",
-    augment=False,
-):
-    """
-    Loads source and target dataloaders for domain adaptation.
-    Normalization statistics are computed ONLY from source clusters.
+# def get_clusters_dataloader(
+#     data_path,
+#     elev_dir,
+#     excluded_cluster,
+#     cluster_names,
+#     batch_size=8,
+#     num_workers=1,
+#     use_theta_e=False,
+#     device="cpu",
+#     stats_path="crossval_normalization_stats.json",
+#     augment=False,
+# ):
+#     """
+#     Load dataloaders with global normalization and optional augmentation.
+#     """
 
-    Returns:
-        dict with 'source' and 'target' dataloaders
-    """
-    LOGGER.info(
-        f"DATALOADER: Loading domain adaptation dataloaders (target: {target_cluster})"
-    )
+#     LOGGER.info(
+#         f"DATALOADER: Creating dataloaders from all clusters except '{excluded_cluster}'..."
+#     )
 
-    # Prepare source clusters
-    source_clusters = [c for c in cluster_names if c != target_cluster]
+#     # Preload raw datasets to compute statistics
+#     raw_train_clusters = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="train",
+#             use_theta_e=use_theta_e,
+#             device=device,
+#             augment=False,
+#         )
+#         for cluster in cluster_names
+#         if cluster != excluded_cluster
+#     ]
 
-    # Raw source datasets for computing stats
-    raw_source_train_clusters = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="train",
-            use_theta_e=use_theta_e,
-            device=device,
-            augment=False,
-        )
-        for cluster in source_clusters
-    ]
+#     LOGGER.info(
+#         f"DATALOADER: Computing normalization statistics for {len(raw_train_clusters)} clusters..."
+#     )
+#     stats = load_or_compute_stats(
+#         raw_train_clusters,
+#         stats_path=os.path.join(data_path, excluded_cluster, stats_path),
+#     )
+#     LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
 
-    LOGGER.info(
-        f"DATALOADER: Computing normalization statistics from {len(raw_source_train_clusters)} source clusters..."
-    )
-    stats = load_or_compute_stats(
-        raw_source_train_clusters,
-        stats_path=os.path.join(data_path, target_cluster, stats_path),
-    )
-    LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
+#     common_args = {
+#         "temp_mean": stats["temp_mean"],
+#         "temp_std": stats["temp_std"],
+#         "elev_mean": stats["elev_mean"],
+#         "elev_std": stats["elev_std"],
+#         "use_theta_e": use_theta_e,
+#         "device": device,
+#     }
 
-    common_args = {
-        "temp_mean": stats["temp_mean"],
-        "temp_std": stats["temp_std"],
-        "elev_mean": stats["elev_mean"],
-        "elev_std": stats["elev_std"],
-        "use_theta_e": use_theta_e,
-        "device": device,
-    }
+#     # Load datasets
+#     train_clusters = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="train",
+#             augment=augment,
+#             **common_args,
+#         )
+#         for cluster in cluster_names
+#         if cluster != excluded_cluster
+#     ]
 
-    # Source datasets
-    source_train = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="train",
-            augment=augment,
-            **common_args,
-        )
-        for cluster in source_clusters
-    ]
-    source_val = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="val",
-            augment=False,
-            **common_args,
-        )
-        for cluster in source_clusters
-    ]
-    source_test = [
-        SingleVariableDataset_v8(
-            os.path.join(data_path, cluster),
-            elev_dir,
-            split="test",
-            augment=False,
-            **common_args,
-        )
-        for cluster in source_clusters
-    ]
+#     val_clusters = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="val",
+#             augment=False,
+#             **common_args,
+#         )
+#         for cluster in cluster_names
+#         if cluster != excluded_cluster
+#     ]
 
-    # Target datasets (use source normalization stats!)
-    target_train = SingleVariableDataset_v8(
-        os.path.join(data_path, target_cluster),
-        elev_dir,
-        split="train",
-        augment=False,
-        **common_args,
-    )
-    target_val = SingleVariableDataset_v8(
-        os.path.join(data_path, target_cluster),
-        elev_dir,
-        split="val",
-        augment=False,
-        **common_args,
-    )
-    target_test = SingleVariableDataset_v8(
-        os.path.join(data_path, target_cluster),
-        elev_dir,
-        split="test",
-        augment=False,
-        **common_args,
-    )
+#     test_clusters = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="test",
+#             augment=False,
+#             **common_args,
+#         )
+#         for cluster in cluster_names
+#         if cluster != excluded_cluster
+#     ]
 
-    # Dataloaders
-    LOGGER.info("DATALOADER: Creating dataloaders...")
-    loaders = {
-        "source": {
-            "train": DataLoader(
-                ConcatDataset(source_train),
-                batch_size=batch_size,
-                shuffle=True,
-                num_workers=num_workers,
-            ),
-            "val": DataLoader(
-                ConcatDataset(source_val),
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-            ),
-            "test": DataLoader(
-                ConcatDataset(source_test),
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-            ),
-        },
-        "target": {
-            "train": DataLoader(
-                target_train,
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-            ),
-            "val": DataLoader(
-                target_val,
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-            ),
-            "test": DataLoader(
-                target_test,
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-            ),
-        },
-        "stats": stats,
-    }
+#     # Wrap in dataloaders
+#     LOGGER.info("DATALOADER: Creating dataloaders...")
+#     train_dataset = ConcatDataset(train_clusters)
+#     val_dataset = ConcatDataset(val_clusters)
+#     test_dataset = ConcatDataset(test_clusters)
 
-    LOGGER.info(
-        f"DATALOADER: Done. Loaded source ({len(source_train)} clusters) and target '{target_cluster}'"
-    )
-    return loaders
+#     train_loader = DataLoader(
+#         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+#     )
+#     val_loader = DataLoader(
+#         val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
+#     )
+#     test_loader = DataLoader(
+#         test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
+#     )
+
+#     LOGGER.info(
+#         f"DATALOADER: Done. \
+#             Train size: {len(train_dataset)} \
+#             Val size: {len(val_dataset)} \
+#             Test size: {len(test_dataset)}"
+#     )
+#     return {"train": train_loader, "val": val_loader, "test": test_loader}
+
+
+# def get_domain_adaptation_dataloaders(
+#     data_path,
+#     elev_dir,
+#     target_cluster,
+#     cluster_names,
+#     batch_size=8,
+#     num_workers=1,
+#     use_theta_e=False,
+#     device="cpu",
+#     stats_path="da_normalization_stats.json",
+#     augment=False,
+# ):
+#     """
+#     Loads source and target dataloaders for domain adaptation.
+#     Normalization statistics are computed ONLY from source clusters.
+
+#     Returns:
+#         dict with 'source' and 'target' dataloaders
+#     """
+#     LOGGER.info(f"DATALOADER: Loading domain adaptation dataloaders (target: {target_cluster})")
+
+#     # Prepare source clusters
+#     source_clusters = [c for c in cluster_names if c != target_cluster]
+
+#     # Raw source datasets for computing stats
+#     raw_source_train_clusters = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="train",
+#             use_theta_e=use_theta_e,
+#             device=device,
+#             augment=False,
+#         )
+#         for cluster in source_clusters
+#     ]
+
+#     LOGGER.info(
+#         f"DATALOADER: Computing normalization statistics from {len(raw_source_train_clusters)} source clusters..."
+#     )
+#     stats = load_or_compute_stats(
+#         raw_source_train_clusters,
+#         stats_path=os.path.join(data_path, target_cluster, stats_path),
+#     )
+#     LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
+
+#     common_args = {
+#         "temp_mean": stats["temp_mean"],
+#         "temp_std": stats["temp_std"],
+#         "elev_mean": stats["elev_mean"],
+#         "elev_std": stats["elev_std"],
+#         "use_theta_e": use_theta_e,
+#         "device": device,
+#     }
+
+#     # Source datasets
+#     source_train = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="train",
+#             augment=augment,
+#             **common_args,
+#         )
+#         for cluster in source_clusters
+#     ]
+#     source_val = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="val",
+#             augment=False,
+#             **common_args,
+#         )
+#         for cluster in source_clusters
+#     ]
+#     source_test = [
+#         SingleVariableDataset_v8(
+#             os.path.join(data_path, cluster),
+#             elev_dir,
+#             split="test",
+#             augment=False,
+#             **common_args,
+#         )
+#         for cluster in source_clusters
+#     ]
+
+#     # Target datasets (use source normalization stats!)
+#     target_train = SingleVariableDataset_v8(
+#         os.path.join(data_path, target_cluster),
+#         elev_dir,
+#         split="train",
+#         augment=False,
+#         **common_args,
+#     )
+#     target_val = SingleVariableDataset_v8(
+#         os.path.join(data_path, target_cluster),
+#         elev_dir,
+#         split="val",
+#         augment=False,
+#         **common_args,
+#     )
+#     target_test = SingleVariableDataset_v8(
+#         os.path.join(data_path, target_cluster),
+#         elev_dir,
+#         split="test",
+#         augment=False,
+#         **common_args,
+#     )
+
+#     # Dataloaders
+#     LOGGER.info("DATALOADER: Creating dataloaders...")
+#     loaders = {
+#         "source": {
+#             "train": DataLoader(
+#                 ConcatDataset(source_train),
+#                 batch_size=batch_size,
+#                 shuffle=True,
+#                 num_workers=num_workers,
+#             ),
+#             "val": DataLoader(
+#                 ConcatDataset(source_val),
+#                 batch_size=batch_size,
+#                 shuffle=False,
+#                 num_workers=num_workers,
+#             ),
+#             "test": DataLoader(
+#                 ConcatDataset(source_test),
+#                 batch_size=batch_size,
+#                 shuffle=False,
+#                 num_workers=num_workers,
+#             ),
+#         },
+#         "target": {
+#             "train": DataLoader(
+#                 target_train,
+#                 batch_size=batch_size,
+#                 shuffle=False,
+#                 num_workers=num_workers,
+#             ),
+#             "val": DataLoader(
+#                 target_val,
+#                 batch_size=batch_size,
+#                 shuffle=False,
+#                 num_workers=num_workers,
+#             ),
+#             "test": DataLoader(
+#                 target_test,
+#                 batch_size=batch_size,
+#                 shuffle=False,
+#                 num_workers=num_workers,
+#             ),
+#         },
+#         "stats": stats,
+#     }
+
+#     LOGGER.info(
+#         f"DATALOADER: Done. Loaded source ({len(source_train)} clusters) and target '{target_cluster}'"
+#     )
+#     return loaders

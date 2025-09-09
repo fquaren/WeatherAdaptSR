@@ -125,9 +125,7 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
             b_T_accum += float(b_T.cpu())
             b_P_accum += float(b_P.cpu())
 
-            outputs = np.concatenate(
-                [pred_T.cpu().numpy(), pred_P.cpu().numpy()], axis=1
-            )
+            outputs = np.concatenate([pred_T.cpu().numpy(), pred_P.cpu().numpy()], axis=1)
 
             test_losses_list.append(loss.item())
             temp_losses_list.append(mae_T.item())
@@ -160,131 +158,60 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
     return evaluation_results
 
 
-# def evaluate_model(model, criterion, test_loader, device="cuda"):
+# def evaluate_model_mmd(model, list_criterions, alpha, test_loader, device="cuda"):
 #     """
-#     Evaluates the model on the test datasets using LaplaceHeteroscedasticLoss.
+#     Evaluates the model on the test datasets from multiple clusters, computes test loss, and plots results.
 
 #     Args:
-#         model: The PyTorch model to evaluate, which outputs both predictions
-#                and uncertainty estimates.
-#         criterion: LaplaceHeteroscedasticLoss instance.
-#         test_loader: DataLoader instance for testing.
+#         model: The PyTorch model to evaluate.
+#         criterion: The loss function.
+#         test_loader (array): Array where values are DataLoader instances for testing.
 #         device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
 
 #     Returns:
-#         dict: Evaluation results containing test_losses, temp_losses, precip_losses,
-#               predictions, targets, and inputs.
+#         dict: Evaluation results containing test_losses, predictions, targets, elevations, inputs.
 #     """
-#     test_losses_list = []
-#     temp_losses_list = []
-#     precip_losses_list = []
-#     predictions_T_list = []
-#     predictions_P_list = []
-#     log_b_T_list = []
-#     log_b_P_list = []
-#     targets_list = []
-#     inputs_list = []
 
-#     model.eval()
+#     test_losses, predictions, targets, elevations, inputs = [], [], [], [], []
 #     with torch.no_grad():
-#         for inputs, targets in test_loader:
-#             inputs, targets = inputs.to(device), targets.to(device)
-
-#             # The model now returns four tensors: pred_T, log_b_T, pred_P, log_b_P
-#             pred_T, log_b_T, pred_P, log_b_P = model(inputs)
-
-#             # Pass all four outputs to the new criterion
-#             loss, mae_T, mae_P, b_T, b_P = criterion(
-#                 pred_T,
-#                 log_b_T,
-#                 targets[:, 0:1, :, :],
-#                 pred_P,
-#                 log_b_P,
-#                 targets[:, 1:2, :, :],
+#         for temperature, elevation, target in tqdm(test_loader):
+#             # TODO: get file name from the dataloader
+#             temperature, elevation, target = (
+#                 temperature.to(device),
+#                 elevation.to(device),
+#                 target.to(device),
 #             )
+#             output, _ = model(
+#                 temperature,
+#                 elevation,
+#                 target_variable=torch.zeros_like(temperature),
+#                 target_elevation=torch.zeros_like(elevation),
+#             )
+#             loss = (
+#                 alpha * list_criterions[0](output, target).item()
+#                 + (1 - alpha) * list_criterions[1](output, target).item()
+#             )
+#             test_losses.append(loss)
+#             predictions.append(output.cpu().numpy())
+#             targets.append(target.cpu().numpy())
+#             elevations.append(elevation.cpu().numpy())
+#             inputs.append(temperature.cpu().numpy())
 
-#             test_losses_list.append(loss.item())
-#             temp_losses_list.append(mae_T.item())
-#             precip_losses_list.append(mae_P.item())
-
-#             # Collect all outputs, including the uncertainty estimates
-#             predictions_T_list.append(pred_T.cpu().numpy())
-#             predictions_P_list.append(pred_P.cpu().numpy())
-#             log_b_T_list.append(log_b_T.cpu().numpy())
-#             log_b_P_list.append(log_b_P.cpu().numpy())
-
-#             targets_list.append(targets.cpu().numpy())
-#             inputs_list.append(inputs.cpu().numpy())
+#     test_losses = np.array(test_losses)
+#     predictions = np.concatenate(predictions, axis=0)
+#     targets = np.concatenate(targets, axis=0)
+#     elevations = np.concatenate(elevations, axis=0)
+#     inputs = np.concatenate(inputs, axis=0)
 
 #     evaluation_results = {
-#         "test_losses": np.array(test_losses_list),
-#         "temp_losses": np.array(temp_losses_list),
-#         "precip_losses": np.array(precip_losses_list),
-#         "pred_T": np.concatenate(predictions_T_list, axis=0),
-#         "pred_P": np.concatenate(predictions_P_list, axis=0),
-#         "log_b_T": np.concatenate(log_b_T_list, axis=0),
-#         "log_b_P": np.concatenate(log_b_P_list, axis=0),
-#         "targets": np.concatenate(targets_list, axis=0),
-#         "inputs": np.concatenate(inputs_list, axis=0),
+#         "test_losses": test_losses,
+#         "predictions": predictions,
+#         "targets": targets,
+#         "elevations": elevations,
+#         "inputs": inputs,
 #     }
 
 #     return evaluation_results
-
-
-def evaluate_model_mmd(model, list_criterions, alpha, test_loader, device="cuda"):
-    """
-    Evaluates the model on the test datasets from multiple clusters, computes test loss, and plots results.
-
-    Args:
-        model: The PyTorch model to evaluate.
-        criterion: The loss function.
-        test_loader (array): Array where values are DataLoader instances for testing.
-        device (str): Device to run the evaluation on ('cpu', 'cuda', etc.).
-
-    Returns:
-        dict: Evaluation results containing test_losses, predictions, targets, elevations, inputs.
-    """
-
-    test_losses, predictions, targets, elevations, inputs = [], [], [], [], []
-    with torch.no_grad():
-        for temperature, elevation, target in tqdm(test_loader):
-            # TODO: get file name from the dataloader
-            temperature, elevation, target = (
-                temperature.to(device),
-                elevation.to(device),
-                target.to(device),
-            )
-            output, _ = model(
-                temperature,
-                elevation,
-                target_variable=torch.zeros_like(temperature),
-                target_elevation=torch.zeros_like(elevation),
-            )
-            loss = (
-                alpha * list_criterions[0](output, target).item()
-                + (1 - alpha) * list_criterions[1](output, target).item()
-            )
-            test_losses.append(loss)
-            predictions.append(output.cpu().numpy())
-            targets.append(target.cpu().numpy())
-            elevations.append(elevation.cpu().numpy())
-            inputs.append(temperature.cpu().numpy())
-
-    test_losses = np.array(test_losses)
-    predictions = np.concatenate(predictions, axis=0)
-    targets = np.concatenate(targets, axis=0)
-    elevations = np.concatenate(elevations, axis=0)
-    inputs = np.concatenate(inputs, axis=0)
-
-    evaluation_results = {
-        "test_losses": test_losses,
-        "predictions": predictions,
-        "targets": targets,
-        "elevations": elevations,
-        "inputs": inputs,
-    }
-
-    return evaluation_results
 
 
 def main():
@@ -302,12 +229,8 @@ def main():
         default=None,
         help="Model architecture to use for evaluation",
     )
-    parser.add_argument(
-        "--exp_path", type=str, default=None, help="Path of model to evaluate"
-    )
-    parser.add_argument(
-        "--local", type=str, default=None, help="Evaluation on local machine"
-    )
+    parser.add_argument("--exp_path", type=str, default=None, help="Path of model to evaluate")
+    parser.add_argument("--local", type=str, default=None, help="Evaluation on local machine")
     parser.add_argument(
         "--num_workers", type=int, default=None, help="Number of workers (optional)"
     )
@@ -330,9 +253,7 @@ def main():
 
     exp_path = args.exp_path
     if exp_path is None:
-        raise ValueError(
-            "Please provide the path to the model to evaluate using --exp_path"
-        )
+        raise ValueError("Please provide the path to the model to evaluate using --exp_path")
 
     LOGGER = setup_logger(exp_path)
     LOGGER.info(f"EVALUATION: Using model path: {exp_path}")
@@ -372,9 +293,7 @@ def main():
     # Load model architecture
     model_architecture = args.model
     if not hasattr(unet, model_architecture):
-        raise ValueError(
-            f"Model architecture '{model_architecture}' not found in unet.py module."
-        )
+        raise ValueError(f"Model architecture '{model_architecture}' not found in unet.py module.")
     if not callable(getattr(unet, model_architecture)):
         raise ValueError(f"Model architecture '{model_architecture}' is not callable.")
 
@@ -384,11 +303,7 @@ def main():
     cluster_names = None  # config["paths"]["clusters"]
     if cluster_names is None:
         cluster_names = sorted(
-            [
-                c
-                for c in os.listdir(data_path)
-                if os.path.isdir(os.path.join(data_path, c))
-            ]
+            [c for c in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, c))]
         )
 
     # Loss function (assuming MSELoss for now, can be made configurable)
@@ -402,159 +317,152 @@ def main():
     # precip_std = data_stats["TOT_PREC_input"]["pooled_std"]
     # criterion = LaplaceHomoscedasticLoss(std_T=temp_std, std_P=precip_std).to(device)
 
-    if method == "single":
+    # if method == "single":
 
-        LOGGER.info(
-            "EVALUATION: Starting 'single' method evaluation (evaluating on all clusters)..."
-        )
-        single_cluster_name = config["paths"]["single_cluster"]
-        if single_cluster_name is None:
-            raise ValueError(
-                "For 'single' method, 'single_cluster' must be specified in the config file under 'paths'."
-            )
+    #     LOGGER.info(
+    #         "EVALUATION: Starting 'single' method evaluation (evaluating on all clusters)..."
+    #     )
+    #     single_cluster_name = config["paths"]["single_cluster"]
+    #     if single_cluster_name is None:
+    #         raise ValueError(
+    #             "For 'single' method, 'single_cluster' must be specified in the config file under 'paths'."
+    #         )
 
-        model_save_path = os.path.join(exp_path, single_cluster_name)
-        model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
+    #     model_save_path = os.path.join(exp_path, single_cluster_name)
+    #     model_state_dict_path = os.path.join(model_save_path, "best_snapshot.pth")
 
-        if not os.path.exists(model_state_dict_path):
-            LOGGER.error(
-                f"EVALUATION: Model not found for single cluster '{single_cluster_name}' \
-                    at {model_state_dict_path}. Exiting."
-            )
+    #     if not os.path.exists(model_state_dict_path):
+    #         LOGGER.error(
+    #             f"EVALUATION: Model not found for single cluster '{single_cluster_name}' \
+    #                 at {model_state_dict_path}. Exiting."
+    #         )
 
-        # Load statistics for UNet
-        statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
-        LOGGER.info(f"Loading normalization stats from {statistics_path}")
-        with open(statistics_path, "r") as f:
-            stats = json.load(f)
-        precip_stats = {
-            "mean": stats["TOT_PREC_input"]["clusters"][single_cluster_name]["mean"],
-            "std": stats["TOT_PREC_input"]["pooled_std"],
-        }
+    #     # Load statistics for UNet
+    #     statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
+    #     LOGGER.info(f"Loading normalization stats from {statistics_path}")
+    #     with open(statistics_path, "r") as f:
+    #         stats = json.load(f)
+    #     precip_stats = {
+    #         "mean": stats["TOT_PREC_input"]["clusters"][single_cluster_name]["mean"],
+    #         "std": stats["TOT_PREC_input"]["pooled_std"],
+    #     }
 
-        model = getattr(unet, model_architecture)(precip_stats=precip_stats)
-        checkpoint = torch.load(model_state_dict_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.to(device)
-        model.eval()
+    #     model = getattr(unet, model_architecture)(precip_stats=precip_stats)
+    #     checkpoint = torch.load(model_state_dict_path, map_location=device)
+    #     model.load_state_dict(checkpoint["model_state_dict"])
+    #     model.to(device)
+    #     model.eval()
 
-        # Plot training metrics for this model
-        evaluation_save_path = os.path.join(
-            exp_path, "evaluation_results", f"model_trained_on_{single_cluster_name}"
-        )
-        os.makedirs(evaluation_save_path, exist_ok=True)
-        plot_training_metrics(
-            model_save_path,
-            evaluation_save_path,
-            model_architecture,
-            single_cluster_name,
-            LOGGER,
-        )
+    #     # Plot training metrics for this model
+    #     evaluation_save_path = os.path.join(
+    #         exp_path, "evaluation_results", f"model_trained_on_{single_cluster_name}"
+    #     )
+    #     os.makedirs(evaluation_save_path, exist_ok=True)
+    #     plot_training_metrics(
+    #         model_save_path,
+    #         evaluation_save_path,
+    #         model_architecture,
+    #         single_cluster_name,
+    #         LOGGER,
+    #     )
 
-        mean_eval_losses = []
-        mean_eval_ssims = []
-        mean_eval_snrmse = []
+    #     mean_eval_losses = []
+    #     mean_eval_ssims = []
+    #     mean_eval_snrmse = []
 
-        for j, test_cluster in enumerate(cluster_names):
-            LOGGER.info(
-                f"EVALUATION: Evaluating model trained on {single_cluster_name} on test data from {test_cluster}..."
-            )
+    #     for j, test_cluster in enumerate(cluster_names):
+    #         LOGGER.info(
+    #             f"EVALUATION: Evaluating model trained on {single_cluster_name} on test data from {test_cluster}..."
+    #         )
 
-            # Get test loader for the current cluster
-            loaders = get_single_cluster_dataloader(
-                data_path=data_path,
-                elev_dir=elev_dir,
-                cluster=test_cluster,
-                batch_size=config["training"]["batch_size"],
-                num_workers=num_workers,
-                use_theta_e=config["training"]["use_theta_e"],
-                device="cpu",  # Always load data to CPU first
-                augment=False,  # No augmentation for evaluation
-            )
-            test_loader = loaders["test"]
+    #         # Get test loader for the current cluster
+    #         loaders = get_single_cluster_dataloader(
+    #             data_path=data_path,
+    #             elev_dir=elev_dir,
+    #             cluster=test_cluster,
+    #             batch_size=config["training"]["batch_size"],
+    #             num_workers=num_workers,
+    #             use_theta_e=config["training"]["use_theta_e"],
+    #             device="cpu",
+    #             augment=False,
+    #         )
+    #         test_loader = loaders["test"]
 
-            results = evaluate_model(
-                model, list_criterions, alpha, test_loader, device="cuda"
-            )
+    #         results = evaluate_model(model, list_criterions, alpha, test_loader, device="cuda")
 
-            mean_test_loss = np.mean(results["test_losses"])
-            mean_eval_losses.append(mean_test_loss)
+    #         mean_test_loss = np.mean(results["test_losses"])
+    #         mean_eval_losses.append(mean_test_loss)
 
-            # Compute SSIM
-            ssim_scores = []
-            for k in range(results["predictions"].shape[0]):
-                ssim_scores.append(
-                    compute_ssim(
-                        torch.from_numpy(results["predictions"][k, 0]),
-                        torch.from_numpy(results["targets"][k, 0]),
-                    ).item()
-                )
+    #         # Compute SSIM
+    #         ssim_scores = []
+    #         for k in range(results["predictions"].shape[0]):
+    #             ssim_scores.append(
+    #                 compute_ssim(
+    #                     torch.from_numpy(results["predictions"][k, 0]),
+    #                     torch.from_numpy(results["targets"][k, 0]),
+    #                 ).item()
+    #             )
 
-            # Compute SSIM
-            snrmse_scores = []
-            for k in range(results["predictions"].shape[0]):
-                snrmse_scores.append(
-                    spectral_nrmse_from_fields(
-                        results["predictions"][k, 0, :, :],
-                        results["targets"][k, 0, :, :],
-                    )
-                )
+    #         # Compute SSIM
+    #         snrmse_scores = []
+    #         for k in range(results["predictions"].shape[0]):
+    #             snrmse_scores.append(
+    #                 spectral_nrmse_from_fields(
+    #                     results["predictions"][k, 0, :, :],
+    #                     results["targets"][k, 0, :, :],
+    #                 )
+    #             )
 
-            mean_ssim = np.mean(ssim_scores)
-            mean_eval_ssims.append(mean_ssim)
-            mean_eval_snrmse.append(snrmse_scores)
+    #         mean_ssim = np.mean(ssim_scores)
+    #         mean_eval_ssims.append(mean_ssim)
+    #         mean_eval_snrmse.append(snrmse_scores)
 
-            LOGGER.info(
-                f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
-            )
-            LOGGER.info(f"EVALUATION: Mean SSIM for {test_cluster}: {mean_ssim:.4f}")
+    #         LOGGER.info(f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}")
+    #         LOGGER.info(f"EVALUATION: Mean SSIM for {test_cluster}: {mean_ssim:.4f}")
 
-            if save_eval:
-                plot_results(
-                    results,
-                    single_cluster_name,
-                    test_cluster,
-                    evaluation_save_path,
-                    save=True,
-                )
+    #         if save_eval:
+    #             plot_results(
+    #                 results,
+    #                 single_cluster_name,
+    #                 test_cluster,
+    #                 evaluation_save_path,
+    #                 save=True,
+    #             )
 
-            # Clean up
-            _ = loaders["test"].dataset.unload_from_gpu()
-            del loaders
-            torch.cuda.empty_cache()
-            gc.collect()
-            LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
+    #         # Clean up
+    #         _ = loaders["test"].dataset.unload_from_gpu()
+    #         del loaders
+    #         torch.cuda.empty_cache()
+    #         gc.collect()
+    #         LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
 
-        # Clean up for the model
-        del model
-        torch.cuda.empty_cache()
-        gc.collect()
+    #     # Clean up for the model
+    #     del model
+    #     torch.cuda.empty_cache()
+    #     gc.collect()
 
-        LOGGER.info(
-            "\n--- Overall Results for 'single' method model evaluated on all clusters ---"
-        )
-        LOGGER.info(f"Model trained on: {single_cluster_name}")
-        for idx, cluster in enumerate(cluster_names):
-            LOGGER.info(
-                f"  Tested on {cluster} | Mean MSE Loss: {mean_eval_losses[idx]:.4f} \
-                    | Mean SSIM: {mean_eval_ssims[idx]:.4f} | Mean rNRMSE: {mean_eval_snrmse[idx]:.4f} "
-            )
-        LOGGER.info(
-            f"Overall Average MSE Loss across all test clusters: {np.mean(mean_eval_losses):.4f}"
-        )
-        LOGGER.info(
-            f"Overall Average SSIM across all test clusters: {np.mean(mean_eval_ssims):.4f}"
-        )
-        LOGGER.info(
-            f"Overall Average sNRMSE across all test clusters: {np.mean(mean_eval_snrmse):.4f}"
-        )
+    #     LOGGER.info("\n--- Overall Results for 'single' method model evaluated on all clusters ---")
+    #     LOGGER.info(f"Model trained on: {single_cluster_name}")
+    #     for idx, cluster in enumerate(cluster_names):
+    #         LOGGER.info(
+    #             f"  Tested on {cluster} | Mean MSE Loss: {mean_eval_losses[idx]:.4f} \
+    #                 | Mean SSIM: {mean_eval_ssims[idx]:.4f} | Mean rNRMSE: {mean_eval_snrmse[idx]:.4f} "
+    #         )
+    #     LOGGER.info(
+    #         f"Overall Average MSE Loss across all test clusters: {np.mean(mean_eval_losses):.4f}"
+    #     )
+    #     LOGGER.info(
+    #         f"Overall Average SSIM across all test clusters: {np.mean(mean_eval_ssims):.4f}"
+    #     )
+    #     LOGGER.info(
+    #         f"Overall Average sNRMSE across all test clusters: {np.mean(mean_eval_snrmse):.4f}"
+    #     )
 
     elif method == "cross-val":
 
         LOGGER.info("EVALUATION: Starting cross-validation evaluation...")
         mean_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
         ssim_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
-        snrmse_eval_matrix = np.zeros((len(cluster_names), len(cluster_names)))
 
         for i, excluded_cluster in enumerate(cluster_names):
             model_save_path = os.path.join(exp_path, excluded_cluster)
@@ -576,6 +484,14 @@ def main():
                 "mean": stats["TOT_PREC_input"]["clusters"][excluded_cluster]["mean"],
                 "std": stats["TOT_PREC_input"]["pooled_std"],
             }
+            temp_stats = {
+                "mean": stats["T_2M_input"]["clusters"][test_cluster]["mean"],
+                "std": stats["T_2M_input"]["pooled_std"],
+            }
+            elev_stats = {
+                "mean": stats["ELEV_input"]["clusters"][test_cluster]["mean"],
+                "std": stats["ELEV_input"]["pooled_std"],
+            }
 
             model = getattr(unet, model_architecture)(precip_stats=precip_stats)
             checkpoint = torch.load(model_state_dict_path, map_location=device)
@@ -583,27 +499,14 @@ def main():
             model.to(device)
             model.eval()
 
-            # Use Laplace homoscedastic loss
-            # # with open(
-            # #     os.path.join(config["paths"]["data_path"], "master_pooled_stats.json"),
-            # #     "r",
-            # # ) as f:
-            # #     data_stats = json.load(f)
-            # init_logb_T = np.log(
-            #     data_stats["T_2M_input"]["clusters"][excluded_cluster]["std"]
-            # )
-            # init_logb_P = np.log(
-            #     data_stats["TOT_PREC_input"]["clusters"][excluded_cluster]["std"]
-            # )
+            # Use Laplace homoscedastic loss with loaded b_T and b_P
             criterion = LaplaceHomoscedasticLoss(
                 init_logb_T=np.log(checkpoint["b_T"]),
                 init_logb_P=np.log(checkpoint["b_P"]),
             ).to(device)
 
             # Plot training metrics for this model
-            evaluation_save_path = os.path.join(
-                exp_path, "evaluation_results", excluded_cluster
-            )
+            evaluation_save_path = os.path.join(exp_path, "evaluation_results", excluded_cluster)
             os.makedirs(evaluation_save_path, exist_ok=True)
             plot_training_metrics(
                 model_save_path,
@@ -638,40 +541,44 @@ def main():
                 mean_test_loss = np.mean(results["test_losses"])
                 mean_eval_matrix[i, j] = mean_test_loss
 
-                # Transform predictions and targets back to original scale if needed
-                # TODO: HERE
+                # Transform predictions and targets back to original scale using the stored stats
+                results["predictions"][:, 0, :, :] = (
+                    results["predictions"][:, 0, :, :] * temp_stats["std"] + temp_stats["mean"]
+                )
+                results["targets"][:, 0, :, :] = (
+                    results["targets"][:, 0, :, :] * temp_stats["std"] + temp_stats["mean"]
+                )
+                results["inputs"][:, 0, :, :] = (
+                    results["inputs"][:, 0, :, :] * temp_stats["std"] + temp_stats["mean"]
+                )
+                results["predictions"][:, 1, :, :] = (
+                    results["predictions"][:, 1, :, :] * precip_stats["std"] + precip_stats["mean"]
+                )
+                results["targets"][:, 1, :, :] = (
+                    results["targets"][:, 1, :, :] * precip_stats["std"] + precip_stats["mean"]
+                )
+                results["inputs"][:, 1, :, :] = (
+                    results["inputs"][:, 1, :, :] * precip_stats["std"] + precip_stats["mean"]
+                )
+                results["elevations"][:, 0, :, :] = (
+                    results["elevations"][:, 0, :, :] * elev_stats["std"] + elev_stats["mean"]
+                )
 
                 # # Compute SSIM
-                # ssim_scores = []
-                # for k in range(results["predictions"].shape[0]):
-                #     ssim_scores.append(
-                #         compute_ssim(
-                #             torch.from_numpy(results["predictions"][k, 0]),
-                #             torch.from_numpy(results["targets"][k, 0]),
-                #         ).item()
-                #     )
-                # ssim_eval_matrix[i, j] = np.mean(ssim_scores)
+                ssim_scores = []
+                for k in range(results["predictions"].shape[0]):
+                    ssim_scores.append(
+                        compute_ssim(
+                            torch.from_numpy(results["predictions"][k, 0]),
+                            torch.from_numpy(results["targets"][k, 0]),
+                        ).item()
+                    )
+                ssim_eval_matrix[i, j] = np.mean(ssim_scores)
 
-                # # Compute normalized spectral error
-                # snrmse_scores = []
-                # for k in range(results["predictions"].shape[0]):
-                #     snrmse_scores.append(
-                #         spectral_nrmse_from_fields(
-                #             results["predictions"][k, 0, :, :],
-                #             results["targets"][k, 0, :, :],
-                #         )
-                #     )
-                # snrmse_eval_matrix[i, j] = np.mean(snrmse_scores)
-
+                LOGGER.info(f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}")
                 LOGGER.info(
-                    f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
+                    f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
                 )
-                # LOGGER.info(
-                #     f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
-                # )
-                # LOGGER.info(
-                #     f"EVALUATION: Mean sNRMSE for {test_cluster}: {snrmse_eval_matrix[i, j]:.4f}"
-                # )
 
                 if save_eval:
                     # Save plots for each test cluster
@@ -688,9 +595,7 @@ def main():
                 del loaders
                 torch.cuda.empty_cache()
                 gc.collect()
-                LOGGER.info(
-                    f"EVALUATION: GPU memory emptied for cluster: {test_cluster}"
-                )
+                LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
 
             # Clean up for the model
             del model
@@ -706,15 +611,6 @@ def main():
             config=config,
         )
 
-        def standardize_row(matrix):
-            # Standardize each row between 0 and 1
-            row_min = matrix.min(axis=1, keepdims=True)
-            row_max = matrix.max(axis=1, keepdims=True)
-            denominator = row_max - row_min
-            # To avoid division by zero if all elements in the row are identical
-            denominator[denominator == 0] = 1
-            return (matrix - row_min) / denominator
-
         def standardize_column(matrix):
             # Standardize each column between 0 and 1
             col_min = matrix.min(axis=0, keepdims=True)
@@ -725,43 +621,24 @@ def main():
             return (matrix - col_min) / denominator
 
         plot_eval_matrix(
-            standardize_row(mean_eval_matrix),
-            cluster_names,
-            "standardized_row_MAE",
-            os.path.join(exp_path, "evaluation_results"),
-            config=config,
-        )
-        plot_eval_matrix(
             standardize_column(mean_eval_matrix),
             cluster_names,
             "standardized_column_MAE",
             os.path.join(exp_path, "evaluation_results"),
             config=config,
         )
-        # plot_eval_matrix(
-        #     ssim_eval_matrix,
-        #     cluster_names,
-        #     "SSIM",
-        #     os.path.join(exp_path, "evaluation_results"),
-        # )
-        # plot_eval_matrix(
-        #     standardize(ssim_eval_matrix),
-        #     cluster_names,
-        #     "standardized_SSIM",
-        #     os.path.join(exp_path, "evaluation_results"),
-        # )
-        # plot_eval_matrix(
-        #     snrmse_eval_matrix,
-        #     cluster_names,
-        #     "sNRMSE",
-        #     os.path.join(exp_path, "evaluation_results"),
-        # )
-        # plot_eval_matrix(
-        #     standardize(snrmse_eval_matrix),
-        #     cluster_names,
-        #     "standardized_sNRMSE",
-        #     os.path.join(exp_path, "evaluation_results"),
-        # )
+        plot_eval_matrix(
+            ssim_eval_matrix,
+            cluster_names,
+            "SSIM",
+            os.path.join(exp_path, "evaluation_results"),
+        )
+        plot_eval_matrix(
+            standardize_column(ssim_eval_matrix),
+            cluster_names,
+            "standardized_column_SSIM",
+            os.path.join(exp_path, "evaluation_results"),
+        )
 
         np.save(
             os.path.join(exp_path, "evaluation_results", "MSE_matrix.npy"),
@@ -770,10 +647,6 @@ def main():
         np.save(
             os.path.join(exp_path, "evaluation_results", "SSIM_matrix.npy"),
             ssim_eval_matrix,
-        )
-        np.save(
-            os.path.join(exp_path, "evaluation_results", "sNRSME_matrix.npy"),
-            snrmse_eval_matrix,
         )
 
     elif method == "all":
@@ -833,9 +706,7 @@ def main():
             )
             test_loader = loaders["test"]
 
-            results = evaluate_model(
-                model, list_criterions, alpha, test_loader, device="cuda"
-            )
+            results = evaluate_model(model, list_criterions, alpha, test_loader, device="cuda")
             mean_test_loss = np.mean(results["test_losses"])
             mean_eval_matrix[0, j] = (
                 mean_test_loss  # Store in the first row as there's only one model
@@ -863,12 +734,8 @@ def main():
                 )
             snrmse_eval_matrix[0, j] = np.mean(snrmse_scores)  # Store in the first row
 
-            LOGGER.info(
-                f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
-            )
-            LOGGER.info(
-                f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[0, j]:.4f}"
-            )
+            LOGGER.info(f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}")
+            LOGGER.info(f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[0, j]:.4f}")
             LOGGER.info(
                 f"EVALUATION: Mean sNRMSE for {test_cluster}: {snrmse_eval_matrix[0, j]:.4f}"
             )
@@ -930,9 +797,7 @@ def main():
             model.eval()
 
             # Plot training metrics for this model
-            evaluation_save_path = os.path.join(
-                exp_path, "evaluation_results", excluded_cluster
-            )
+            evaluation_save_path = os.path.join(exp_path, "evaluation_results", excluded_cluster)
             os.makedirs(evaluation_save_path, exist_ok=True)
             plot_training_metrics(
                 model_save_path,
@@ -988,9 +853,7 @@ def main():
                     )
                 snrmse_eval_matrix[0, j] = np.mean(snrmse_scores)
 
-                LOGGER.info(
-                    f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}"
-                )
+                LOGGER.info(f"EVALUATION: Mean test loss for {test_cluster}: {mean_test_loss:.4f}")
                 LOGGER.info(
                     f"EVALUATION: Mean SSIM for {test_cluster}: {ssim_eval_matrix[i, j]:.4f}"
                 )
@@ -1013,9 +876,7 @@ def main():
                 del loaders
                 torch.cuda.empty_cache()
                 gc.collect()
-                LOGGER.info(
-                    f"EVALUATION: GPU memory emptied for cluster: {test_cluster}"
-                )
+                LOGGER.info(f"EVALUATION: GPU memory emptied for cluster: {test_cluster}")
 
             # Clean up for the model
             del model
