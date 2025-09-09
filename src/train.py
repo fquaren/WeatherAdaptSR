@@ -4,7 +4,6 @@ import numpy as np
 import time
 from tqdm import tqdm
 import gc
-import yaml
 import logging
 
 from src.loss import LaplaceHomoscedasticLoss
@@ -27,36 +26,38 @@ def objective(
 ):
     # Hyperparameter optimization
     lr_model = trial.suggest_float("lr_model", 1e-6, 1e-4, log=True)
-    # New: Suggest a ratio instead of an independent lr_loss
-    lr_ratio = trial.suggest_float("lr_ratio", 0.1, 1.0)
-    lr_loss = lr_model * lr_ratio
-    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+    lr_loss_T = trial.suggest_float("lr_loss_T", 1e-6, 1e-5, log=True)
+    lr_loss_P = trial.suggest_float("lr_loss_P", 1e-6, 1e-5, log=True)
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=False)
 
-    # Use Laplace homoscedastic loss
-    criterion = LaplaceHomoscedasticLoss().to(device)
+    criterion = LaplaceHomoscedasticLoss(
+        init_logb_T=np.log(config["training"]["init_b_T"]),
+        init_logb_P=np.log(config["training"]["init_b_P"]),
+    ).to(device)
 
-    # Optimizer with separate param groups
-    optimizer = getattr(torch.optim, config["training"]["optimizer"])(
-        [
-            {
-                "params": model.parameters(),
-                "lr": lr_model,
-                "weight_decay": weight_decay,
-            },
-            {
-                "params": [criterion.log_b_T, criterion.log_b_P],
-                "lr": lr_loss,
-                "weight_decay": 0.0,
-            },
-        ]
+    # Separate optimizers
+    optimizer_model = getattr(torch.optim, config["training"]["optimizer"])(
+        model.parameters(), lr=lr_model, weight_decay=weight_decay
+    )
+    # New: Separate optimizers for eta_T and eta_P
+    optimizer_loss_T = getattr(torch.optim, config["training"]["optimizer"])(
+        [criterion.eta_T], lr=lr_loss_T, weight_decay=0.0
+    )
+    optimizer_loss_P = getattr(torch.optim, config["training"]["optimizer"])(
+        [criterion.eta_P], lr=lr_loss_P, weight_decay=0.0
     )
 
-    # Scheduler applied to all param groups
-    scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(
-        optimizer, **config["training"]["scheduler_params"]
-    )
+    # Separate schedulers
+    scheduler_model = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_model, **config["training"]["scheduler_params"])
+    scheduler_loss_T = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_loss_T, **config["training"]["scheduler_params"])
+    scheduler_loss_P = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_loss_P, **config["training"]["scheduler_params"])
 
-    # Data loaders
     if single_cluster:
         cluster_dataloaders = get_single_cluster_dataloader(
             data_path=config["paths"]["data_path"],
@@ -91,8 +92,12 @@ def objective(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            optimizer=optimizer,
-            scheduler=scheduler,
+            optimizer_model=optimizer_model,
+            optimizer_loss_T=optimizer_loss_T,
+            optimizer_loss_P=optimizer_loss_P,
+            scheduler_model=scheduler_model,
+            scheduler_loss_T=scheduler_loss_T,
+            scheduler_loss_P=scheduler_loss_P,
             criterion=criterion,
             device=device,
         )
@@ -116,14 +121,21 @@ def _train_step(
     model,
     train_loader,
     val_loader,
-    optimizer,
-    scheduler,
+    optimizer_model,
+    optimizer_loss_T,
+    optimizer_loss_P,
+    scheduler_model,
+    scheduler_loss_T,
+    scheduler_loss_P,
     criterion,
     device,
 ):
-    # --------------------
+    """
+    A single training and validation step for one epoch with separate optimizers.
+    Includes NaN/Inf protection and safe logging.
+    """
+
     # Training
-    # --------------------
     train_loss = 0.0
     temp_loss = 0.0
     precip_loss = 0.0
@@ -131,42 +143,49 @@ def _train_step(
     b_P_accum = 0.0
 
     model.train()
-    for inputs, targets in train_loader:
+    for inputs, coarse_inputs, elev, mask, targets in train_loader:
         inputs = inputs.to(device)
+        coarse_inputs = coarse_inputs.to(device)
+        elev = elev.to(device)
+        mask = mask.to(device)
         targets = targets.to(device)
 
-        optimizer.zero_grad()
-        outputs = model(inputs)
+        optimizer_model.zero_grad(set_to_none=True)
+        optimizer_loss_T.zero_grad(set_to_none=True)
+        optimizer_loss_P.zero_grad(set_to_none=True)
 
-        # Channel 0 = temperature, channel 1 = precipitation
+        pred_T, pred_P = model(inputs, coarse_inputs, elev, mask)
+
         loss, mae_T, mae_P, b_T, b_P = criterion(
-            outputs[:, 0:1, :, :],
-            targets[:, 0:1, :, :],
-            outputs[:, 1:2, :, :],
-            targets[:, 1:2, :, :],
+            pred_T, targets[:, 0:1], pred_P, targets[:, 1:2]
         )
 
+        # Guard against invalid loss values
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"[WARN] Skipping training batch due to invalid loss: {loss.item()}")
+            continue
+
         loss.backward()
-        optimizer.step()
+        optimizer_model.step()
+        optimizer_loss_T.step()
+        optimizer_loss_P.step()
 
         # Accumulate metrics
-        b_T_accum += b_T.detach().cpu().item()
-        b_P_accum += b_P.detach().cpu().item()
-        temp_loss += mae_T.detach().cpu().item()
-        precip_loss += mae_P.detach().cpu().item()
+        b_T_accum += b_T.cpu().item()
+        b_P_accum += b_P.cpu().item()
+        temp_loss += mae_T.cpu().item()
+        precip_loss += mae_P.cpu().item()
         train_loss += loss.detach().cpu().item()
 
-    # Average metrics
-    num_batches = len(train_loader)
+    # Average training metrics
+    num_batches = max(1, len(train_loader))
     b_T = b_T_accum / num_batches
     b_P = b_P_accum / num_batches
     temp_loss /= num_batches
     precip_loss /= num_batches
     train_loss /= num_batches
 
-    # --------------------
     # Validation
-    # --------------------
     model.eval()
     val_loss = 0.0
     val_temp_loss = 0.0
@@ -175,35 +194,46 @@ def _train_step(
     val_b_P_accum = 0.0
 
     with torch.no_grad():
-        for inputs, targets in val_loader:
+        for inputs, coarse_inputs, elev, mask, targets in val_loader:
             inputs = inputs.to(device)
+            coarse_inputs = coarse_inputs.to(device)
+            elev = elev.to(device)
+            mask = mask.to(device)
             targets = targets.to(device)
-            outputs = model(inputs)
+
+            pred_T, pred_P = model(inputs, coarse_inputs, elev, mask)
 
             loss, mae_T, mae_P, b_T, b_P = criterion(
-                outputs[:, 0:1, :, :],
-                targets[:, 0:1, :, :],
-                outputs[:, 1:2, :, :],
-                targets[:, 1:2, :, :],
+                pred_T, targets[:, 0:1], pred_P, targets[:, 1:2]
             )
 
-            val_b_T_accum += b_T.detach().cpu().item()
-            val_b_P_accum += b_P.detach().cpu().item()
-            val_temp_loss += mae_T.detach().cpu().item()
-            val_precip_loss += mae_P.detach().cpu().item()
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(
+                    f"[WARN] Skipping validation batch due to invalid loss: {loss.item()}"
+                )
+                continue
+
+            val_b_T_accum += b_T.cpu().item()
+            val_b_P_accum += b_P.cpu().item()
+            val_temp_loss += mae_T.cpu().item()
+            val_precip_loss += mae_P.cpu().item()
             val_loss += loss.detach().cpu().item()
 
-    num_val_batches = len(val_loader)
+    num_val_batches = max(1, len(val_loader))
     val_b_T = val_b_T_accum / num_val_batches
     val_b_P = val_b_P_accum / num_val_batches
     val_loss /= num_val_batches
     val_temp_loss /= num_val_batches
     val_precip_loss /= num_val_batches
 
-    # Step scheduler
-    scheduler.step(val_loss)
+    # Step schedulers if provided
+    if scheduler_model is not None:
+        scheduler_model.step(val_loss)
+    if scheduler_loss_T is not None:
+        scheduler_loss_T.step(val_loss)
+    if scheduler_loss_P is not None:
+        scheduler_loss_P.step(val_loss)
 
-    # Free memory
     torch.cuda.empty_cache()
 
     return (
@@ -220,7 +250,6 @@ def _train_step(
     )
 
 
-# Train loop
 def train_model(
     model,
     excluding_cluster,
@@ -231,43 +260,65 @@ def train_model(
     device,
     save_path,
 ):
-    # Load optimizer/scheduler configs
-    if os.path.exists(os.path.join(save_path, "config.yaml")):
-        config = yaml.safe_load(open(os.path.join(save_path, "config.yaml"), "r"))
+    """
+    Revised training function with separate optimizers and correct early stopping.
+    """
+    criterion = LaplaceHomoscedasticLoss(
+        init_logb_T=torch.tensor(np.log(config["training"]["init_b_T"])),
+        init_logb_P=torch.tensor(np.log(config["training"]["init_b_P"])),
+    ).to(device)
 
-    # Use Laplace homoscedastic loss
-    criterion = LaplaceHomoscedasticLoss().to(device)
-
-    optimizer = getattr(torch.optim, config["training"]["optimizer"])(
+    # Separate optimizers for model and loss parameters
+    optimizer_model = getattr(torch.optim, config["training"]["optimizer"])(
+        model.parameters(),
+        lr=config["domain_specific"][excluding_cluster]["optimizer_params"]["lr_model"],
+        weight_decay=config["domain_specific"][excluding_cluster][
+            "optimizer_params"
+        ].get("weight_decay", 0.0),
+    )
+    optimizer_loss_T = getattr(torch.optim, config["training"]["optimizer"])(
         [
-            {
-                "params": model.parameters(),
-                **config["domain_specific"][excluding_cluster]["optimizer_params"],
-            },
-            {
-                "params": [criterion.log_b_T, criterion.log_b_P],
-                **config["domain_specific"][excluding_cluster]["loss_params"],
-            },
-        ]
+            p
+            for n, p in criterion.named_parameters()
+            if p.requires_grad and "logb_T" in n
+        ],
+        lr=config["domain_specific"][excluding_cluster]["loss_params"]["lr_loss_T"],
+        weight_decay=config["domain_specific"][excluding_cluster]["loss_params"].get(
+            "weight_decay", 0.0
+        ),
+    )
+    optimizer_loss_P = getattr(torch.optim, config["training"]["optimizer"])(
+        [
+            p
+            for n, p in criterion.named_parameters()
+            if p.requires_grad and "logb_P" in n
+        ],
+        lr=config["domain_specific"][excluding_cluster]["loss_params"]["lr_loss_P"],
+        weight_decay=config["domain_specific"][excluding_cluster]["loss_params"].get(
+            "weight_decay", 0.0
+        ),
     )
 
-    scheduler = getattr(torch.optim.lr_scheduler, config["training"]["scheduler"])(
-        optimizer, **config["training"]["scheduler_params"]
-    )
+    scheduler_model = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_model, **config["training"]["scheduler_params"])
+    scheduler_loss_T = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_loss_T, **config["training"]["scheduler_params"])
+    scheduler_loss_P = getattr(
+        torch.optim.lr_scheduler, config["training"]["scheduler"]
+    )(optimizer_loss_P, **config["training"]["scheduler_params"])
 
+    # Early stopping and logging setup
     early_stopping = config["training"]["early_stopping"]
     patience = config["training"]["early_stopping_params"]["patience"]
 
     list_b_T, list_b_P = [], []
     val_list_b_P, val_list_b_T = [], []
-    (
-        train_losses,
-        train_temp_losses,
-        train_precip_losses,
-    ) = ([], [], [])
+    train_losses, train_temp_losses, train_precip_losses = [], [], []
     val_losses, val_temp_losses, val_precip_losses = [], [], []
 
-    # Load checkpoint if exists
+    # Checkpoint loading logic needs to be updated to handle two optimizers/schedulers
     cluster_dir = os.path.join(save_path, excluding_cluster)
     if os.path.exists(os.path.join(cluster_dir, "last_snapshot.pth")):
         LOGGER.info(f"TRAINING: Loading model checkpoint from {cluster_dir} ...")
@@ -275,28 +326,27 @@ def train_model(
             os.path.join(cluster_dir, "last_snapshot.pth"), map_location=device
         )
         model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        # Load states for both optimizers and schedulers
+        optimizer_model.load_state_dict(checkpoint["optimizer_model_state_dict"])
+        optimizer_loss_T.load_state_dict(checkpoint["optimizer_loss_T_state_dict"])
+        optimizer_loss_P.load_state_dict(checkpoint["optimizer_loss_P_state_dict"])
+        scheduler_model.load_state_dict(checkpoint["scheduler_model_state_dict"])
+        scheduler_loss_T.load_state_dict(checkpoint["scheduler_loss_T_state_dict"])
+        scheduler_loss_P.load_state_dict(checkpoint["scheduler_loss_P_state_dict"])
         start_epoch = checkpoint["epoch"]
         if os.path.exists(os.path.join(cluster_dir, "train_losses.npy")):
             train_losses = list(np.load(os.path.join(cluster_dir, "train_losses.npy")))
         if os.path.exists(os.path.join(cluster_dir, "val_losses.npy")):
             val_losses = list(np.load(os.path.join(cluster_dir, "val_losses.npy")))
-        early_stop_counter_T = checkpoint.get("early_stop_counter_T", 0)
-        early_stop_counter_P = checkpoint.get("early_stop_counter_P", 0)
+        early_stop_counter = checkpoint.get("early_stop_counter", 0)
         best_val_loss = checkpoint.get("val_loss", float("inf"))
-        best_val_temp_loss = checkpoint.get("val_temp_loss", float("inf"))
-        best_val_precip_loss = checkpoint.get("val_precip_loss", float("inf"))
-        LOGGER.info(f"TRAINING: Resuming training from epoch {start_epoch+1}")
+        LOGGER.info(f"TRAINING: Resuming training from epoch {start_epoch + 1}")
     else:
         LOGGER.info("TRAINING: No checkpoint found, starting fresh training.")
         os.makedirs(os.path.join(save_path, excluding_cluster), exist_ok=True)
         start_epoch = 0
-        early_stop_counter_T = 0
-        early_stop_counter_P = 0
+        early_stop_counter = 0
         best_val_loss = float("inf")
-        best_val_temp_loss = float("inf")
-        best_val_precip_loss = float("inf")
 
     log_file = os.path.join(cluster_dir, "training_log.csv")
     if os.path.exists(log_file):
@@ -304,7 +354,9 @@ def train_model(
             f.write(f"Resuming training from epoch {start_epoch+1}\n")
     else:
         with open(log_file, "w") as f:
-            f.write("Epoch,Train Loss,Validation Loss,Learning Rate,Epoch Time\n")
+            f.write(
+                "Epoch,Train Loss,Validation Loss,Temperature Train Loss,Precipitation Train Loss,Temperature Validation Loss,Precipitation Validation Loss,Model LR,Loss LR,Epoch Time\n"
+            )
 
     # Training loop
     for epoch in tqdm(range(start_epoch, num_epochs), desc="Training Progress:"):
@@ -326,86 +378,86 @@ def train_model(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            optimizer=optimizer,
-            scheduler=scheduler,
+            optimizer_model=optimizer_model,
+            optimizer_loss_T=optimizer_loss_T,
+            optimizer_loss_P=optimizer_loss_P,
+            scheduler_model=scheduler_model,
+            scheduler_loss_T=scheduler_loss_T,
+            scheduler_loss_P=scheduler_loss_P,
             criterion=criterion,
             device=device,
         )
-        list_b_T.append(b_T if isinstance(b_T, float) else b_T.detach().cpu().item())
-        list_b_P.append(b_P if isinstance(b_P, float) else b_P.detach().cpu().item())
-        train_temp_losses.append(temp_loss)
-        train_precip_losses.append(precip_loss)
-        train_losses.append(train_loss)
-        val_list_b_P.append(val_b_P)
-        val_list_b_T.append(val_b_T)
-        val_temp_losses.append(val_temp_loss)
-        val_precip_losses.append(val_precip_loss)
-        val_losses.append(val_loss)
 
-        # -------------------------------
-        # Early stopping on both MAEs
-        # -------------------------------
-        if val_temp_loss < best_val_temp_loss:
-            best_val_temp_loss = val_temp_loss
-            early_stop_counter_T = 0
-        else:
-            early_stop_counter_T += 1
+        list_b_T.append(float(b_T))
+        list_b_P.append(float(b_P))
+        train_temp_losses.append(float(temp_loss))
+        train_precip_losses.append(float(precip_loss))
+        train_losses.append(float(train_loss))
+        val_list_b_P.append(float(val_b_P))
+        val_list_b_T.append(float(val_b_T))
+        val_temp_losses.append(float(val_temp_loss))
+        val_precip_losses.append(float(val_precip_loss))
+        val_losses.append(float(val_loss))
 
-        if val_precip_loss < best_val_precip_loss:
-            best_val_precip_loss = val_precip_loss
-            early_stop_counter_P = 0
-        else:
-            early_stop_counter_P += 1
-
-        # Save best snapshot if either metric improved
-        if (
-            val_loss < best_val_loss
-            or val_temp_loss <= best_val_temp_loss
-            or val_precip_loss <= best_val_precip_loss
-        ):
-            best_val_loss = min(best_val_loss, val_loss)
+        # Early stopping and saving logic based on overall validation loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            early_stop_counter = 0
+            # Save the best model snapshot
             snapshot_path = os.path.join(cluster_dir, "best_snapshot.pth")
             torch.save(
                 {
                     "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(),
+                    "optimizer_model_state_dict": optimizer_model.state_dict(),
+                    "optimizer_loss_T_state_dict": optimizer_loss_T.state_dict(),
+                    "optimizer_loss_P_state_dict": optimizer_loss_P.state_dict(),
+                    "scheduler_model_state_dict": scheduler_model.state_dict(),
+                    "scheduler_loss_T_state_dict": scheduler_loss_T.state_dict(),
+                    "scheduler_loss_P_state_dict": scheduler_loss_P.state_dict(),
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "val_temp_loss": val_temp_loss,
                     "val_precip_loss": val_precip_loss,
-                    "early_stop_counter_T": early_stop_counter_T,
-                    "early_stop_counter_P": early_stop_counter_P,
+                    "b_T": list_b_T[-1],
+                    "b_P": list_b_P[-1],
                 },
                 snapshot_path,
             )
+        else:
+            early_stop_counter += 1
 
         epoch_time = time.time() - epoch_start_time
-        current_lr = optimizer.param_groups[0]["lr"]
+        current_lr_model = optimizer_model.param_groups[0]["lr"]
+        current_lr_loss_T = optimizer_loss_T.param_groups[0]["lr"]
+        current_lr_loss_P = optimizer_loss_P.param_groups[0]["lr"]
         with open(log_file, "a") as f:
             f.write(
-                f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{current_lr:.6e},{epoch_time:.2f}\n"
+                f"{epoch+1},{train_loss:.6f},{val_loss:.6f},{train_temp_losses[-1]:.6f},{train_precip_losses[-1]:.6f},{val_temp_losses[-1]:.6f},{val_precip_losses[-1]:.6f},{current_lr_model:.6e},{current_lr_loss_T:.6e},{current_lr_loss_P:.6e},{epoch_time:.2f}\n"
             )
 
-        # Trigger early stop if either patience exceeded
-        if early_stopping and (
-            early_stop_counter_T >= patience or early_stop_counter_P >= patience
-        ):
-            LOGGER.info("TRAINING: Early stopping triggered (MAE stagnation).")
+        if early_stopping and (early_stop_counter >= patience):
+            LOGGER.info(
+                "TRAINING: Early stopping triggered (Validation loss stagnation)."
+            )
             last_snapshot_path = os.path.join(cluster_dir, "last_snapshot.pth")
             torch.save(
                 {
                     "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(),
+                    "optimizer_model_state_dict": optimizer_model.state_dict(),
+                    "optimizer_loss_T_state_dict": optimizer_loss_T.state_dict(),
+                    "optimizer_loss_P_state_dict": optimizer_loss_P.state_dict(),
+                    "scheduler_model_state_dict": scheduler_model.state_dict(),
+                    "scheduler_loss_T_state_dict": scheduler_loss_T.state_dict(),
+                    "scheduler_loss_P_state_dict": scheduler_loss_P.state_dict(),
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "val_temp_loss": val_temp_loss,
                     "val_precip_loss": val_precip_loss,
-                    "early_stop_counter_T": early_stop_counter_T,
-                    "early_stop_counter_P": early_stop_counter_P,
+                    "b_T": list_b_T[-1],
+                    "b_P": list_b_P[-1],
+                    "early_stop_counter": early_stop_counter,
                 },
                 last_snapshot_path,
             )
@@ -416,21 +468,30 @@ def train_model(
 
     LOGGER.info(f"TRAINING: Training complete! Best model saved as: {snapshot_path}")
 
-    np.save(os.path.join(cluster_dir, "b_T.npy"), np.array(list_b_T))
-    np.save(os.path.join(cluster_dir, "b_P.npy"), np.array(list_b_P))
-    np.save(os.path.join(cluster_dir, "train_losses.npy"), np.array(train_losses))
+    def to_numpy_safe(x):
+        """Convert list of tensors/floats to NumPy array safely."""
+        return np.array(
+            [t.detach().cpu().item() if torch.is_tensor(t) else float(t) for t in x]
+        )
+
+    np.save(os.path.join(cluster_dir, "b_T.npy"), to_numpy_safe(list_b_T))
+    np.save(os.path.join(cluster_dir, "b_P.npy"), to_numpy_safe(list_b_P))
+    np.save(os.path.join(cluster_dir, "train_losses.npy"), to_numpy_safe(train_losses))
     np.save(
-        os.path.join(cluster_dir, "train_temp_losses.npy"), np.array(train_temp_losses)
+        os.path.join(cluster_dir, "train_temp_losses.npy"),
+        to_numpy_safe(train_temp_losses),
     )
     np.save(
         os.path.join(cluster_dir, "train_precip_losses.npy"),
-        np.array(train_precip_losses),
+        to_numpy_safe(train_precip_losses),
     )
-    np.save(os.path.join(cluster_dir, "val_b_T.npy"), np.array(val_list_b_T))
-    np.save(os.path.join(cluster_dir, "val_b_P.npy"), np.array(val_list_b_P))
-
-    np.save(os.path.join(cluster_dir, "val_losses.npy"), np.array(val_losses))
-    np.save(os.path.join(cluster_dir, "val_temp_losses.npy"), np.array(val_temp_losses))
+    np.save(os.path.join(cluster_dir, "val_b_T.npy"), to_numpy_safe(val_list_b_T))
+    np.save(os.path.join(cluster_dir, "val_b_P.npy"), to_numpy_safe(val_list_b_P))
+    np.save(os.path.join(cluster_dir, "val_losses.npy"), to_numpy_safe(val_losses))
     np.save(
-        os.path.join(cluster_dir, "val_precip_losses.npy"), np.array(val_precip_losses)
+        os.path.join(cluster_dir, "val_temp_losses.npy"), to_numpy_safe(val_temp_losses)
+    )
+    np.save(
+        os.path.join(cluster_dir, "val_precip_losses.npy"),
+        to_numpy_safe(val_precip_losses),
     )

@@ -6,6 +6,7 @@ import yaml
 from tqdm import tqdm
 import gc
 import logging
+import json
 
 from data.dataloader import get_single_cluster_dataloader
 from src.models import unet
@@ -101,27 +102,46 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
     predictions_list = []
     targets_list = []
     inputs_list = []
+    elevations_list = []
+    coarse_inputs_list = []
+    masks_list = []
 
     model.eval()
+    b_T_accum, b_P_accum = 0.0, 0.0
     with torch.no_grad():
-        for inputs, targets in test_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
+        for inputs, coarse_inputs, elev, mask, targets in test_loader:
+            inputs = inputs.to(device)
+            coarse_inputs = coarse_inputs.to(device)
+            elev = elev.to(device)
+            mask = mask.to(device)
+            targets = targets.to(device)
 
-            # criterion returns: (total_loss, mae_temp, mae_precip)
-            loss, mae_T, mae_P, log_b_T, log_b_P = criterion(
-                outputs[:, 0:1, :, :],
-                targets[:, 0:1, :, :],
-                outputs[:, 1:2, :, :],
-                targets[:, 1:2, :, :],
+            pred_T, pred_P = model(inputs, coarse_inputs, elev, mask)
+
+            loss, mae_T, mae_P, b_T, b_P = criterion(
+                pred_T, targets[:, 0:1], pred_P, targets[:, 1:2]
+            )
+
+            b_T_accum += float(b_T.cpu())
+            b_P_accum += float(b_P.cpu())
+
+            outputs = np.concatenate(
+                [pred_T.cpu().numpy(), pred_P.cpu().numpy()], axis=1
             )
 
             test_losses_list.append(loss.item())
             temp_losses_list.append(mae_T.item())
             precip_losses_list.append(mae_P.item())
-            predictions_list.append(outputs.cpu().numpy())
+            predictions_list.append(outputs)
             targets_list.append(targets.cpu().numpy())
             inputs_list.append(inputs.cpu().numpy())
+            elevations_list.append(elev.cpu().numpy())
+            coarse_inputs_list.append(coarse_inputs.cpu().numpy())
+            masks_list.append(mask.cpu().numpy())
+
+    num_batches = len(test_loader)
+    b_T = b_T_accum / num_batches
+    b_P = b_P_accum / num_batches
 
     evaluation_results = {
         "test_losses": np.array(test_losses_list),
@@ -130,6 +150,11 @@ def evaluate_model(model, criterion, test_loader, device="cuda"):
         "predictions": np.concatenate(predictions_list, axis=0),
         "targets": np.concatenate(targets_list, axis=0),
         "inputs": np.concatenate(inputs_list, axis=0),
+        "elevations": np.concatenate(elevations_list, axis=0),
+        "coarse_inputs": np.concatenate(coarse_inputs_list, axis=0),
+        "masks": np.concatenate(masks_list, axis=0),
+        "b_T": b_T,
+        "b_P": b_P,
     }
 
     return evaluation_results
@@ -356,7 +381,7 @@ def main():
     # Data paths
     data_path = config["paths"]["data_path"]
     elev_dir = config["paths"]["elev_path"]
-    cluster_names = config["paths"]["clusters"]
+    cluster_names = None  # config["paths"]["clusters"]
     if cluster_names is None:
         cluster_names = sorted(
             [
@@ -367,8 +392,15 @@ def main():
         )
 
     # Loss function (assuming MSELoss for now, can be made configurable)
-    # criterion = getattr(torch.nn, config["training"]["criterion"])()
-    criterion = LaplaceHomoscedasticLoss().to(device)
+    # # criterion = getattr(torch.nn, config["training"]["criterion"])()
+    # with open(
+    #     os.path.join(config["paths"]["data_path"], "master_pooled_stats.json"),
+    #     "r",
+    # ) as f:
+    #     data_stats = json.load(f)
+    # temp_std = data_stats["T_2M_input"]["pooled_std"]
+    # precip_std = data_stats["TOT_PREC_input"]["pooled_std"]
+    # criterion = LaplaceHomoscedasticLoss(std_T=temp_std, std_P=precip_std).to(device)
 
     if method == "single":
 
@@ -389,9 +421,18 @@ def main():
                 f"EVALUATION: Model not found for single cluster '{single_cluster_name}' \
                     at {model_state_dict_path}. Exiting."
             )
-            return
 
-        model = getattr(unet, model_architecture)()
+        # Load statistics for UNet
+        statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
+        LOGGER.info(f"Loading normalization stats from {statistics_path}")
+        with open(statistics_path, "r") as f:
+            stats = json.load(f)
+        precip_stats = {
+            "mean": stats["TOT_PREC_input"]["clusters"][single_cluster_name]["mean"],
+            "std": stats["TOT_PREC_input"]["pooled_std"],
+        }
+
+        model = getattr(unet, model_architecture)(precip_stats=precip_stats)
         checkpoint = torch.load(model_state_dict_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         model.to(device)
@@ -526,11 +567,38 @@ def main():
                 )
                 continue
 
-            model = getattr(unet, model_architecture)()
+            # Load statistics for UNet
+            statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
+            LOGGER.info(f"Loading normalization stats from {statistics_path}")
+            with open(statistics_path, "r") as f:
+                stats = json.load(f)
+            precip_stats = {
+                "mean": stats["TOT_PREC_input"]["clusters"][excluded_cluster]["mean"],
+                "std": stats["TOT_PREC_input"]["pooled_std"],
+            }
+
+            model = getattr(unet, model_architecture)(precip_stats=precip_stats)
             checkpoint = torch.load(model_state_dict_path, map_location=device)
             model.load_state_dict(checkpoint["model_state_dict"])
             model.to(device)
             model.eval()
+
+            # Use Laplace homoscedastic loss
+            # # with open(
+            # #     os.path.join(config["paths"]["data_path"], "master_pooled_stats.json"),
+            # #     "r",
+            # # ) as f:
+            # #     data_stats = json.load(f)
+            # init_logb_T = np.log(
+            #     data_stats["T_2M_input"]["clusters"][excluded_cluster]["std"]
+            # )
+            # init_logb_P = np.log(
+            #     data_stats["TOT_PREC_input"]["clusters"][excluded_cluster]["std"]
+            # )
+            criterion = LaplaceHomoscedasticLoss(
+                init_logb_T=np.log(checkpoint["b_T"]),
+                init_logb_P=np.log(checkpoint["b_P"]),
+            ).to(device)
 
             # Plot training metrics for this model
             evaluation_save_path = os.path.join(
@@ -635,6 +703,7 @@ def main():
             cluster_names,
             "MAE",
             os.path.join(exp_path, "evaluation_results"),
+            config=config,
         )
 
         def standardize_row(matrix):
@@ -660,12 +729,14 @@ def main():
             cluster_names,
             "standardized_row_MAE",
             os.path.join(exp_path, "evaluation_results"),
+            config=config,
         )
         plot_eval_matrix(
             standardize_column(mean_eval_matrix),
             cluster_names,
             "standardized_column_MAE",
             os.path.join(exp_path, "evaluation_results"),
+            config=config,
         )
         # plot_eval_matrix(
         #     ssim_eval_matrix,

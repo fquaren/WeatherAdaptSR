@@ -10,8 +10,76 @@ def init_weights_kaiming(m):
             init.zeros_(m.bias)
 
 
-class HeteroscedasticUNet(nn.Module):
-    def __init__(self, in_channels=3, out_channels=2):
+class SoftmaxConstraintLayer(nn.Module):
+    """
+    Implements image-wise mass conservation following Harder et al. (2023):
+
+        y_j = g(ỹ_j) / (1/n ∑_i g(ỹ_i)) * x
+
+    with g(y) = exp(y), alternatively y^2.
+
+    Args:
+        precip_stats (dict): {"mean": float, "std": float} for log1p-normalized precipitation.
+        eps (float): Small constant to prevent division by zero.
+    """
+
+    def __init__(self, precip_stats, eps=1e-6):
+        super().__init__()
+        if precip_stats is None:
+            raise ValueError("Precipitation statistics must be provided.")
+        self.precip_stats = precip_stats
+        self.eps = eps
+
+    def forward(self, y_tilde_normalized, x_lr_normalized):
+        """
+        y_tilde_normalized: (B, 1, H_hr, W_hr) - HR prediction in normalized log1p space
+        x_lr_normalized:    (B, 1, H_lr, W_lr) - LR input in normalized log1p space
+        """
+        mean, std = self.precip_stats["mean"], self.precip_stats["std"]
+
+        # Denormalize
+        y_tilde_log1p = y_tilde_normalized * std + mean
+        x_lr_log1p = x_lr_normalized * std + mean
+
+        # Back to physical precipitation (≥0)
+        y_tilde_phys = torch.expm1(y_tilde_log1p)  # HR prediction in mm
+        x_lr_phys = torch.expm1(x_lr_log1p)  # LR input in mm
+
+        # Apply g(y) = exp(y)
+        g_y = torch.exp(y_tilde_phys)
+        # Alternatively, apply g(y) = y^2
+        # g_y = y_tilde_phys.pow(2)
+
+        # Compute mean of g(y) over the HR image
+        g_mean = g_y.mean(dim=(-2, -1), keepdim=True) + self.eps
+
+        # Scale factor (image-wise conservation)
+        # Multiply by the LR *total sum* to enforce conservation
+        sum_lr = x_lr_phys.sum(dim=(-2, -1), keepdim=True)
+        scale = sum_lr / (g_mean * g_y.shape[-2] * g_y.shape[-1])  # (B,1,1,1)
+
+        # Apply scaling
+        y_constrained_phys = g_y * scale
+
+        # Transform back to log1p space
+        y_constrained_log1p = torch.log1p(y_constrained_phys)
+
+        # Normalize again
+        y_constrained_normalized = (y_constrained_log1p - mean) / std
+
+        return y_constrained_normalized
+
+
+class HomoscedasticUNet(nn.Module):
+    """Homoscedastic U-Net for temperature & precipitation downscaling with land mask and elevation input."""
+
+    def __init__(self, in_channels=4, out_channels=2, precip_stats=None):
+        """
+        Args:
+            in_channels: temperature, precipitation, elevation, land mask
+            out_channels: 2 (temperature, precipitation)
+            precip_stats: Precipitation statistics for normalization (dict with "mean" and "std")
+        """
         super().__init__()
 
         # Encoder
@@ -23,7 +91,7 @@ class HeteroscedasticUNet(nn.Module):
         # Bottleneck
         self.bottleneck = self.conv_block(256, 512)
 
-        # Decoder (upsample + conv)
+        # Decoder
         self.up3 = self.up_block(512, 256)
         self.decoder3 = self.conv_block(512, 256)
 
@@ -33,9 +101,12 @@ class HeteroscedasticUNet(nn.Module):
         self.up1 = self.up_block(128, 64)
         self.decoder1 = self.conv_block(128, 64)
 
-        # Final output layer
-        # Output is now 2x the number of target channels to predict both the mean and log-variance
-        self.output_head = nn.Conv2d(64, out_channels * 2, kernel_size=1)
+        # Output head
+        self.output_head = nn.Conv2d(64, out_channels, kernel_size=1)
+
+        # Hard constraint for precipitation
+        self.precip_stats = precip_stats
+        self.smcl = SoftmaxConstraintLayer(precip_stats=self.precip_stats)
 
     def conv_block(self, in_channels, out_channels):
         """Two 3x3 convolutions with ReLU and reflect padding."""
@@ -72,17 +143,24 @@ class HeteroscedasticUNet(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-    def forward(self, x):
-        # Ensure correct input size
-        assert x.shape[2:] == (128, 128), f"Input must be (128, 128), got {x.shape[2:]}"
+    def forward(self, x, coarse_x, elev, mask):
+        """
+        Args:
+            x: (B, 1, H, W) -> inputs (HR features)
+        """
+
+        # Expect HR inputs (128x128)
+        stacked_input = torch.cat((x, elev, mask), dim=1)  # (B,4,H,W)
+        assert stacked_input.shape[2:] == (
+            128,
+            128,
+        ), f"Input must be (128,128), got {stacked_input.shape[2:]}"
 
         # Encoder
-        e1 = self.encoder1(x)
+        e1 = self.encoder1(stacked_input)
         p1 = self.pool(e1)
-
         e2 = self.encoder2(p1)
         p2 = self.pool(e2)
-
         e3 = self.encoder3(p2)
         p3 = self.pool(e3)
 
@@ -93,25 +171,387 @@ class HeteroscedasticUNet(nn.Module):
         d3 = self.up3(b)
         d3 = torch.cat((d3, e3), dim=1)
         d3 = self.decoder3(d3)
-
         d2 = self.up2(d3)
         d2 = torch.cat((d2, e2), dim=1)
         d2 = self.decoder2(d2)
-
         d1 = self.up1(d2)
         d1 = torch.cat((d1, e1), dim=1)
         d1 = self.decoder1(d1)
 
-        # Final output head for both mean and log-variance
-        # The output tensor has shape (batch_size, 4, height, width) for out_channels=2
-        combined_output = self.output_head(d1)
+        combined = self.output_head(d1)  # (B,2,H,W)
+        pred_T = combined[:, 0:1, :, :]
+        pred_P = combined[:, 1:2, :, :]
+        coarse_P = coarse_x[:, 1:2, :, :]
 
-        # Split the output tensor into two halves for each task
-        # The first two channels are for temperature (T), the next two are for precipitation (P)
-        pred_T, log_b_T = combined_output[:, 0:1, :, :], combined_output[:, 1:2, :, :]
-        pred_P, log_b_P = combined_output[:, 2:3, :, :], combined_output[:, 3:4, :, :]
+        # Apply SmCL only to precipitation
+        constrained_P = self.smcl(pred_P, coarse_P)
 
-        return pred_T, log_b_T, pred_P, log_b_P
+        return pred_T, constrained_P
+
+
+# ---------------------------------------------------------- Batch Normalization
+
+
+class HomoscedasticUNet_BN(nn.Module):
+    """Homoscedastic U-Net for temperature & precipitation downscaling with land mask and elevation input."""
+
+    def __init__(self, in_channels=4, out_channels=2, precip_stats=None):
+        """
+        Args:
+            in_channels: temperature, precipitation, elevation, land mask
+            out_channels: 2 (temperature, precipitation)
+            precip_stats: Precipitation statistics for normalization (dict with "mean" and "std")
+        """
+        super().__init__()
+
+        # Encoder
+        self.encoder1 = self.conv_block(in_channels, 64)
+        self.pool = nn.MaxPool2d(2)
+        self.encoder2 = self.conv_block(64, 128)
+        self.encoder3 = self.conv_block(128, 256)
+
+        # Bottleneck
+        self.bottleneck = self.conv_block(256, 512)
+
+        # Decoder
+        self.up3 = self.up_block(512, 256)
+        self.decoder3 = self.conv_block(512, 256)
+
+        self.up2 = self.up_block(256, 128)
+        self.decoder2 = self.conv_block(256, 128)
+
+        self.up1 = self.up_block(128, 64)
+        self.decoder1 = self.conv_block(128, 64)
+
+        # Output head
+        self.output_head = nn.Conv2d(64, out_channels, kernel_size=1)
+
+        # Hard constraint for precipitation
+        self.precip_stats = precip_stats
+        self.smcl = SoftmaxConstraintLayer(precip_stats=self.precip_stats)
+
+    def conv_block(self, in_channels, out_channels):
+        """Two 3x3 convolutions with ReLU and reflect padding."""
+        return nn.Sequential(
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def up_block(self, in_channels, out_channels):
+        """Bilinear upsampling followed by a 3x3 convolution."""
+        return nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x, coarse_x, elev, mask):
+        """
+        Args:
+            x: (B, 1, H, W) -> inputs (HR features)
+        """
+
+        # Expect HR inputs (128x128)
+        stacked_input = torch.cat((x, elev, mask), dim=1)  # (B,4,H,W)
+        assert stacked_input.shape[2:] == (
+            128,
+            128,
+        ), f"Input must be (128,128), got {stacked_input.shape[2:]}"
+
+        # Encoder
+        e1 = self.encoder1(stacked_input)
+        p1 = self.pool(e1)
+        e2 = self.encoder2(p1)
+        p2 = self.pool(e2)
+        e3 = self.encoder3(p2)
+        p3 = self.pool(e3)
+
+        # Bottleneck
+        b = self.bottleneck(p3)
+
+        # Decoder
+        d3 = self.up3(b)
+        d3 = torch.cat((d3, e3), dim=1)
+        d3 = self.decoder3(d3)
+        d2 = self.up2(d3)
+        d2 = torch.cat((d2, e2), dim=1)
+        d2 = self.decoder2(d2)
+        d1 = self.up1(d2)
+        d1 = torch.cat((d1, e1), dim=1)
+        d1 = self.decoder1(d1)
+
+        combined = self.output_head(d1)  # (B,2,H,W)
+        pred_T = combined[:, 0:1, :, :]
+        pred_P = combined[:, 1:2, :, :]
+        coarse_P = coarse_x[:, 1:2, :, :]
+
+        # Apply SmCL only to precipitation
+        constrained_P = self.smcl(pred_P, coarse_P)
+
+        return pred_T, constrained_P
+
+
+# ---------------------------------------------------------- Dropout
+
+
+class HomoscedasticUNet_Dropout(nn.Module):
+    """Homoscedastic U-Net with dropout for temperature & precipitation downscaling."""
+
+    def __init__(
+        self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25
+    ):
+        """
+        Args:
+            in_channels: temperature, precipitation, elevation, land mask
+            out_channels: 2 (temperature, precipitation)
+            precip_stats: Precipitation statistics for normalization (dict with "mean" and "std")
+        """
+        super().__init__()
+
+        # Encoder
+        self.encoder1 = self.conv_block(in_channels, 64)
+        self.pool = nn.MaxPool2d(2)
+        self.encoder2 = self.conv_block(64, 128)
+        self.encoder3 = self.conv_block(128, 256)
+        self.dropout = nn.Dropout2d(p=dropout_rate)
+
+        # Bottleneck
+        self.bottleneck = nn.Sequential(
+            self.conv_block(256, 512),
+            nn.Dropout2d(p=dropout_rate),
+        )
+
+        # Decoder
+        self.up3 = self.up_block(512, 256)
+        self.decoder3 = self.conv_block(512, 256)
+
+        self.up2 = self.up_block(256, 128)
+        self.decoder2 = self.conv_block(256, 128)
+
+        self.up1 = self.up_block(128, 64)
+        self.decoder1 = self.conv_block(128, 64)
+
+        # Output head
+        self.output_head = nn.Conv2d(64, out_channels, kernel_size=1)
+
+        # Hard constraint for precipitation
+        self.precip_stats = precip_stats
+        self.smcl = SoftmaxConstraintLayer(precip_stats=self.precip_stats)
+
+    def conv_block(self, in_channels, out_channels):
+        """Two 3x3 convolutions with ReLU and reflect padding."""
+        return nn.Sequential(
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.ReLU(inplace=True),
+        )
+
+    def up_block(self, in_channels, out_channels):
+        """Bilinear upsampling followed by a 3x3 convolution."""
+        return nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x, coarse_x, elev, mask):
+        """
+        Args:
+            x: (B, 1, H, W) -> inputs (HR features)
+        """
+
+        # Expect HR inputs (128x128)
+        stacked_input = torch.cat((x, elev, mask), dim=1)  # (B,4,H,W)
+        assert stacked_input.shape[2:] == (
+            128,
+            128,
+        ), f"Input must be (128,128), got {stacked_input.shape[2:]}"
+
+        # Encoder with dropout
+        e1 = self.dropout(self.encoder1(stacked_input))
+        p1 = self.pool(e1)
+        e2 = self.dropout(self.encoder2(p1))
+        p2 = self.pool(e2)
+        e3 = self.dropout(self.encoder3(p2))
+        p3 = self.pool(e3)
+
+        # Bottleneck with dropout
+        b = self.bottleneck(p3)
+
+        # Decoder (no dropout)
+        d3 = self.up3(b)
+        d3 = torch.cat((d3, e3), dim=1)
+        d3 = self.decoder3(d3)
+        d2 = self.up2(d3)
+        d2 = torch.cat((d2, e2), dim=1)
+        d2 = self.decoder2(d2)
+        d1 = self.up1(d2)
+        d1 = torch.cat((d1, e1), dim=1)
+        d1 = self.decoder1(d1)
+
+        combined = self.output_head(d1)  # (B,2,H,W)
+        pred_T = combined[:, 0:1, :, :]
+        pred_P = combined[:, 1:2, :, :]
+        coarse_P = coarse_x[:, 1:2, :, :]
+
+        # Apply SmCL only to precipitation
+        constrained_P = self.smcl(pred_P, coarse_P)
+
+        return pred_T, constrained_P
+
+
+# ---------------------------------------------------------- Dropout and Batch Normalization
+
+
+class HomoscedasticUNet_BN_Dropout(nn.Module):
+    def __init__(
+        self, in_channels=4, out_channels=2, precip_stats=None, dropout_rate=0.25
+    ):
+        super().__init__()
+
+        # Encoder blocks with dropout
+        self.encoder1 = self.conv_block(in_channels, 64)
+        self.pool = nn.MaxPool2d(2)
+        self.encoder2 = self.conv_block(64, 128, dropout_rate=dropout_rate)
+        self.encoder3 = self.conv_block(128, 256, dropout_rate=dropout_rate)
+
+        # Bottleneck with dropout
+        self.bottleneck = self.conv_block(256, 512, dropout_rate=dropout_rate)
+
+        # Decoder blocks (no dropout)
+        self.up3 = self.up_block(512, 256)
+        self.decoder3 = self.conv_block(512, 256)
+
+        self.up2 = self.up_block(256, 128)
+        self.decoder2 = self.conv_block(256, 128)
+
+        self.up1 = self.up_block(128, 64)
+        self.decoder1 = self.conv_block(128, 64)
+
+        self.output_head = nn.Conv2d(64, out_channels, kernel_size=1)
+
+        self.precip_stats = precip_stats
+        self.smcl = SoftmaxConstraintLayer(precip_stats=self.precip_stats)
+
+    def conv_block(self, in_channels, out_channels, dropout_rate=0):
+        layers = [
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        ]
+        if dropout_rate > 0:
+            layers.append(nn.Dropout2d(p=dropout_rate))
+        return nn.Sequential(*layers)
+
+    def up_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                padding_mode="reflect",
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x, coarse_x, elev, mask):
+        stacked_input = torch.cat((x, elev, mask), dim=1)
+        assert stacked_input.shape[2:] == (128, 128)
+
+        e1 = self.encoder1(stacked_input)
+        p1 = self.pool(e1)
+        e2 = self.encoder2(p1)
+        p2 = self.pool(e2)
+        e3 = self.encoder3(p2)
+        p3 = self.pool(e3)
+
+        b = self.bottleneck(p3)
+
+        d3 = self.up3(b)
+        d3 = torch.cat((d3, e3), dim=1)
+        d3 = self.decoder3(d3)
+        d2 = self.up2(d3)
+        d2 = torch.cat((d2, e2), dim=1)
+        d2 = self.decoder2(d2)
+        d1 = self.up1(d2)
+        d1 = torch.cat((d1, e1), dim=1)
+        d1 = self.decoder1(d1)
+
+        combined = self.output_head(d1)
+        pred_T = combined[:, 0:1, :, :]
+        pred_P = combined[:, 1:2, :, :]
+        coarse_P = coarse_x[:, 1:2, :, :]
+
+        constrained_P = self.smcl(pred_P, coarse_P)
+
+        return pred_T, constrained_P
+
+
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+# ---------------------------------------------------------- Old Basic UNet (for reference)
 
 
 class UNet(nn.Module):

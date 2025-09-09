@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name all+single
+#SBATCH --job-name eval_UNet
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -20,10 +20,10 @@ module load singularityce/4.1.0
 container_path="/users/fquareng/singularity/dl_curnagl.sif"
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
-models=("UNet" "UNet")
-methods=("single" "all")
-exp_dir="/scratch/fquareng/experiments/single-all"
-experiments=("$exp_dir/" "$exp_dir/" "$exp_dir/" "$exp_dir/")
+models=("HomoscedasticUNet")
+methods=("cross-val")
+exp_dir="/scratch/fquareng/experiments/homoscedastic_v2" 
+experiments=("$exp_dir/o31h")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"
@@ -34,6 +34,6 @@ for i in "${!models[@]}"; do
         --device "cuda" \
         --model "$model" \
         --exp_path "$exp" \
-        --method "$method"
+        --method "$method" &
 done
 wait

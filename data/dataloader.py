@@ -84,7 +84,8 @@ def get_single_cluster_dataloader(
     LOGGER.info(f"Loading normalization stats from {statistics_path}")
     with open(statistics_path, "r") as f:
         stats = json.load(f)
-        LOGGER.info(f"DATALOADER: Normalization stats: {stats}")
+        pretty_stats = json.dumps(stats, indent=4)
+        LOGGER.info(f"DATALOADER: Normalization stats:\n{pretty_stats}")
 
     common_args = {
         "vars": vars,
@@ -134,9 +135,6 @@ def get_single_cluster_dataloader(
             Test size: {len(test_dataset)}"
     )
     return {"train": train_loader, "val": val_loader, "test": test_loader}
-
-
-# OLD
 
 
 def get_clusters_dataloader(

@@ -19,10 +19,10 @@
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet")
+models=("HomoscedasticUNet_BN_Dropout")
 methods=("cross-val")
-exp_dir="/scratch/fquareng/experiments/single_MAE_fancy" 
-experiments=("$exp_dir/o19p")
+exp_dir="/scratch/fquareng/experiments/homoscedastic_DA_v1" 
+experiments=("$exp_dir/8lyh")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"

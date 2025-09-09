@@ -20,7 +20,7 @@ module load singularityce/4.1.0
 container_path="/users/fquareng/singularity/dl_curnagl.sif"
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
-models=("UNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
+models=("HeteroscedasticUNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
 methods=("cross-val") # "cross-val" "cross-val" "mmd")
 exp_dir="/scratch/fquareng/experiments/cross-val-v8"
 resume=("$exp_dir/oi1n_2")

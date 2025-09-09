@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 import os
+from matplotlib import colors
 
 
 # def plot_results(
@@ -90,6 +91,10 @@ def plot_results(
     predictions = evaluation_results["predictions"]
     targets = evaluation_results["targets"]
     inputs = evaluation_results["inputs"]
+    elevations = evaluation_results["elevations"]
+    masks = evaluation_results["masks"]
+    b_T = evaluation_results["b_T"]
+    b_P = evaluation_results["b_P"]
 
     # Create directory for saving results
     os.makedirs(save_path, exist_ok=True)
@@ -99,16 +104,28 @@ def plot_results(
     bottom_5_idx = test_losses.argsort()[:5]
 
     def plot_subset(indices, title_prefix, filename_suffix):
-        fig, axes = plt.subplots(10, 4, figsize=(10, 25))
+        fig, axes = plt.subplots(10, 5, figsize=(12, 25))
         plt.suptitle(
             f"{title_prefix} 5 examples for T_2M and TOT_PREC\n"
-            f"Mean Test Loss for model trained excluding {eval_on_cluster}\n"
-            f"and tested on {cluster_name}: {test_losses.mean():.4f}"
+            f"Trained excluding {eval_on_cluster}, Evaluated on {cluster_name}\n"
+            f"Mean Test Loss: {test_losses.mean():.4f}.\n"
+            f"b_T: {b_T:.4f}, b_P: {b_P:.4f}"
         )
 
         variable_names = ["T_2M", "TOT_PREC"]
-        titles = ["Input", "Prediction", "Target", "Elevation"]
-        cmaps = ["coolwarm", "coolwarm", "coolwarm", "plasma"]
+        titles = ["Input", "Prediction", "Target", "Elevation", "Land mask"]
+        cmaps = [
+            "coolwarm",
+            "coolwarm",
+            "coolwarm",
+            "plasma",
+            "viridis",
+        ]  # Keep original cmaps for reference
+
+        # Define custom binary colormap for the mask
+        binary_cmap = colors.ListedColormap(
+            ["blue", "brown"]
+        )  # Example: 0=blue, 1=brown
 
         for var_idx, var_name in enumerate(variable_names):
             for i, idx in enumerate(indices):
@@ -118,18 +135,37 @@ def plot_results(
                 input_img = inputs[idx][var_idx]
                 pred_img = predictions[idx][var_idx]
                 target_img = targets[idx][var_idx]
-                elev_img = inputs[idx][-1]
+                elev_img = elevations[idx][-1]
+                mask_img = masks[idx][-1]
 
-                images = [input_img, pred_img, target_img, elev_img]
-                vmin = np.amin(target_img)
-                vmax = np.amax(target_img)
+                images = [input_img, pred_img, target_img, elev_img, mask_img]
 
-                for j, (data, title, cmap) in enumerate(zip(images, titles, cmaps)):
+                # Determine vmin/vmax for the first three columns dynamically
+                # This ensures consistent scaling for each row's T_2M/TOT_PREC images
+                vmin_data = np.amin(target_img)
+                vmax_data = np.amax(target_img)
+
+                for j, (data, title) in enumerate(
+                    zip(images, titles)
+                ):  # Removed cmap from here
                     ax = axes[row_offset, j]
-                    if j < 3:
-                        img = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-                    else:
-                        img = ax.imshow(data, cmap=cmap)
+
+                    current_cmap = cmaps[j]  # Default from the list
+                    current_vmin = vmin_data  # Default for first three
+                    current_vmax = vmax_data  # Default for first three
+
+                    if j == 3:  # Column 4: Elevation
+                        current_cmap = "plasma"
+                        current_vmin = np.amin(elevations)
+                        current_vmax = np.amax(elevations)
+                    elif j == 4:  # Column 5: Land mask
+                        current_cmap = binary_cmap
+                        current_vmin = 0.0
+                        current_vmax = 1.0  # Mask values are typically 0 or 1
+
+                    img = ax.imshow(
+                        data, cmap=current_cmap, vmin=current_vmin, vmax=current_vmax
+                    )
 
                     ax.set_title(f"{var_name} - {title}")
                     ax.axis("off")
@@ -249,19 +285,18 @@ def plot_training_metrics(
     plt.title(
         f"Training metrics {model_architecture} model trained on {trained_on_label}"
     )
-    plt.plot(np.log(b_T), linestyle=":", label="Train b_T")
-    plt.plot(np.log(val_b_T), linestyle="-", label="Validation b_T")
-    plt.plot(np.log(b_P), linestyle="-.", label="Train b_P")
-    plt.plot(np.log(val_b_P), linestyle="--", label="Validation b_P")
+    plt.plot(b_T, linestyle=":", label="Train b_T")
+    plt.plot(val_b_T, linestyle="-", label="Validation b_T")
+    plt.plot(b_P, linestyle="-.", label="Train b_P")
+    plt.plot(val_b_P, linestyle="--", label="Validation b_P")
     plt.xlabel("Epoch")
     plt.ylabel("Parameter value")
-    plt.yscale("log")
     plt.legend()
     plt.savefig(os.path.join(evaluation_path, "log_params.png"))
     plt.close()
 
 
-def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
+def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path, config):
     """
     Plots the mean test loss matrix for all clusters, highlighting the diagonal.
     """
@@ -293,7 +328,7 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
     )
 
     # Plot mean test loss matrix
-    cmap = "bwr_r" if metric == "SSIM" else "bwr"
+    cmap = "bwr"
     fig, ax = plt.subplots(figsize=(10, 8))
     cax = ax.matshow(
         mean_eval_matrix,
@@ -304,15 +339,17 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
     ax.set_yticks(np.arange(N))
     ax.set_xticklabels(cluster_names, rotation=45, ha="left")
     ax.set_yticklabels(cluster_names)
+    ax.xaxis.set_label_position("bottom")
+    ax.xaxis.tick_bottom()
     plt.xlabel("Model evaluated on:")
     plt.ylabel("Model trained on: ")
     plt.title(
-        f"Model: UNet\n"
-        f"Mean Test Loss Matrix {metric}: {np.mean(mean_eval_matrix):.6f},\n"
-        f"Mean Diagonal {metric}: {mean_diagonal:.6f},\n"
-        f"Mean Non-Diagonal {metric}: {mean_off_diagonal:.6f},\n"
-        f"Difference Mean Diag & Mean Non-Diagonal {metric}: {mean_diagonal - mean_off_diagonal:.6f},\n"
-        f"Consistency: {consistency:.6f}"
+        f"Model: {config['EXPERIMENT_MODEL']}\n"
+        f"Mean Test Loss Matrix {metric}: {np.mean(mean_eval_matrix):.4f},\n"
+        f"Mean Diagonal {metric}: {mean_diagonal:.4f},\n"
+        f"Mean Non-Diagonal {metric}: {mean_off_diagonal:.4f},\n"
+        f"Difference Mean Diag & Mean Non-Diagonal {metric}: {(mean_off_diagonal - mean_diagonal):.4f},\n"
+        f"Consistency: {consistency:.4f}"
     )
 
     # Highlight the diagonal cells
@@ -327,6 +364,22 @@ def plot_eval_matrix(mean_eval_matrix, cluster_names, metric, save_path):
             alpha=1,
         )
         ax.add_patch(rect)
+
+    # Add the MAE value inside each square
+    for i in range(N):
+        for j in range(N):
+            value = mean_eval_matrix[i, j]
+            # Choose text color based on background
+            text_color = "white" if value > np.mean(mean_eval_matrix) else "black"
+            ax.text(
+                j,
+                i,
+                f"{value:.2f}",
+                ha="center",
+                va="center",
+                color=text_color,
+                fontsize=10,
+            )
 
     plt.tight_layout()
     plt.savefig(os.path.join(save_path, f"{metric}.png"))

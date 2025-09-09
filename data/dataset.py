@@ -1,9 +1,9 @@
 import os
 import torch
 import numpy as np
-import random
 from torch.utils.data import Dataset
 import gc
+import random
 
 
 class SingleVariableDataset_v8(Dataset):
@@ -20,59 +20,67 @@ class SingleVariableDataset_v8(Dataset):
         elev_std=None,
     ):
         """
-        Dataset loading all data directly onto GPU memory, with optional normalization and augmentation.
+        Dataset loading data onto GPU, with optional normalization, elevation, land-mask, and augmentation.
 
         Args:
             data_dir (str): Directory containing input/target .npy files.
             elev_dir (str): Directory with individual elevation .npy files.
             split (str): 'train', 'val', etc.
-            use_theta_e (bool): If True, use theta_e files.
             device (str): 'cuda' or 'cpu'.
-            augment (bool): Whether to apply data augmentation (only effective if split=="train").
-            temp_mean (float or tensor): Mean value for temperature normalization.
-            temp_std (float or tensor): Std deviation for temperature normalization.
-            elev_mean (float or tensor): Mean value for elevation normalization.
-            elev_std (float or tensor): Std deviation for elevation normalization.
+            augment (bool): Whether to apply augmentation (train only).
+            elev_mean/elev_std: Elevation normalization stats.
         """
         self.device = device
         self.split = split
         self.augment = augment
+        self.elev_dir = elev_dir
+        self.mask_dir = os.path.join(elev_dir, "land_masks")
+        self.elev_mean = elev_mean
+        self.elev_std = elev_std
+        self.elev_cache = {}
+        self.mask_cache = {}
 
+        # Load input and target variables
         input_list = []
         target_list = []
+        coarse_input_list = []
 
         for var in vars:
+            # High-resolution (interpolated) input
             input_path = os.path.join(
                 data_dir, f"{split}_{var}_input_normalized_interp8x_bilinear.npy"
             )
+            # High-resolution target
             target_path = os.path.join(data_dir, f"{split}_{var}_target_normalized.npy")
+
+            # Path for coarse resolution input
+            coarse_path = os.path.join(data_dir, f"{split}_{var}_input_normalized.npy")
 
             input_data = np.load(input_path)
             target_data = np.load(target_path)
+            coarse_data = np.load(coarse_path)
 
             input_list.append(torch.tensor(input_data, dtype=torch.float32))
             target_list.append(torch.tensor(target_data, dtype=torch.float32))
+            coarse_input_list.append(torch.tensor(coarse_data, dtype=torch.float32))
 
-        # Stack along channel dimension (1) so shape becomes [samples, channels, H, W]
+        # Stack along channel dim -> [samples, channels, H, W]
         self.input_data = torch.stack(input_list, dim=1).to(device)
         self.target_data = torch.stack(target_list, dim=1).to(device)
+        self.coarse_input_data = torch.stack(coarse_input_list, dim=1).to(device)
 
+        # Load locations
         location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
         self.locations = np.load(location_path)
-
-        self.elev_dir = elev_dir
-        self.elev_cache = {}
-
-        # Normalization elevation
-        self.elev_mean = elev_mean
-        self.elev_std = elev_std
 
     def __len__(self):
         return self.input_data.shape[0]
 
     def __getitem__(self, idx):
+        # Retrieve samples for all data types
         input_sample = self.input_data[idx]
         target_sample = self.target_data[idx]
+        coarse_input_sample = self.coarse_input_data[idx]
         location_name = tuple(self.locations[idx])
 
         # Load and normalize elevation
@@ -84,58 +92,100 @@ class SingleVariableDataset_v8(Dataset):
             elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
             if self.elev_mean is not None and self.elev_std is not None:
                 elev_tensor = (elev_tensor - self.elev_mean) / self.elev_std
-                elev_tensor = np.log(
-                    elev_tensor * 1000 + 1e5
-                )  # As in Harder et al. 2025
+                elev_tensor = torch.log(elev_tensor * 1000 + 1e5)
             self.elev_cache[location_name] = elev_tensor.to(self.device)
-
         elev_sample = self.elev_cache[location_name]
 
-        # Apply augmentation if in train split
-        if self.augment:
-            input_sample, elev_sample, target_sample = self.apply_augmentations(
-                input_sample, elev_sample, target_sample
+        # Load land mask
+        if location_name not in self.mask_cache:
+            mask_path = os.path.join(
+                self.mask_dir, f"{location_name[0]}_{location_name[1]}_landmask.npy"
+            )
+            mask_array = np.load(mask_path)
+            mask_tensor = torch.tensor(mask_array, dtype=torch.float32).unsqueeze(0)
+            self.mask_cache[location_name] = mask_tensor.to(self.device)
+        mask_sample = self.mask_cache[location_name]
+
+        # Apply augmentation only if split is 'train' and self.augment is True
+        if self.augment and self.split == "train":
+            (
+                input_sample,
+                elev_sample,
+                mask_sample,
+                target_sample,
+                coarse_input_sample,
+            ) = self.apply_augmentations(
+                input_sample,
+                elev_sample,
+                mask_sample,
+                target_sample,
+                coarse_input_sample,
             )
 
-        full_input_sample = torch.cat([input_sample, elev_sample], dim=0)
+        return (
+            input_sample,
+            coarse_input_sample,
+            elev_sample,
+            mask_sample,
+            target_sample,
+        )
 
-        return full_input_sample, target_sample
+    def apply_augmentations(
+        self, input_sample, elev_sample, mask_sample, target_sample, coarse_sample
+    ):
+        """
+        Applies random rotation, flipping, and additive noise to the tensors.
+        """
+        # Random Rotation (0, 90, 180, 270 degrees)
+        # We rotate by swapping dimensions, which is a fast operation.
+        if random.random() < 0.5:
+            # Rotate 90, 180, or 270 degrees
+            k = random.randint(1, 3)
+            input_sample = torch.rot90(input_sample, k, dims=[1, 2])
+            elev_sample = torch.rot90(elev_sample, k, dims=[1, 2])
+            mask_sample = torch.rot90(mask_sample, k, dims=[1, 2])
+            target_sample = torch.rot90(target_sample, k, dims=[1, 2])
+            coarse_sample = torch.rot90(coarse_sample, k, dims=[1, 2])
 
-    def apply_augmentations(self, input_sample, elev_sample, target_sample):
-        # Horizontal flip
+        # Random Horizontal Flip
         if random.random() < 0.5:
             input_sample = torch.flip(input_sample, dims=[2])
             elev_sample = torch.flip(elev_sample, dims=[2])
+            mask_sample = torch.flip(mask_sample, dims=[2])
             target_sample = torch.flip(target_sample, dims=[2])
+            coarse_sample = torch.flip(coarse_sample, dims=[2])
 
-        # Vertical flip
+        # Random Vertical Flip
         if random.random() < 0.5:
             input_sample = torch.flip(input_sample, dims=[1])
             elev_sample = torch.flip(elev_sample, dims=[1])
+            mask_sample = torch.flip(mask_sample, dims=[1])
             target_sample = torch.flip(target_sample, dims=[1])
+            coarse_sample = torch.flip(coarse_sample, dims=[1])
 
-        # Rotation by 0°, 90°, 180°, 270°
-        k = random.choice([0, 1, 2, 3])
-        if k > 0:
-            input_sample = torch.rot90(input_sample, k, dims=[1, 2])
-            elev_sample = torch.rot90(elev_sample, k, dims=[1, 2])
-            target_sample = torch.rot90(target_sample, k, dims=[1, 2])
+        # Additive Noise
+        # Noise is only added to the input data, not the targets, masks, or elevation.
+        noise_std = 0.05  # Standard deviation of the noise. Adjust as needed.
+        noise = noise_std * torch.randn_like(input_sample)
+        input_sample += noise
 
-        # Multiplicative noise to input
-        if random.random() < 0.5:
-            factor = torch.randn_like(input_sample) * 0.01 + 1.0
-            input_sample *= factor
-
-        return input_sample, elev_sample, target_sample
+        return input_sample, elev_sample, mask_sample, target_sample, coarse_sample
 
     def unload_from_gpu(self):
         del self.input_data
+        del self.coarse_input_data
         del self.target_data
         for key in list(self.elev_cache.keys()):
             del self.elev_cache[key]
         self.elev_cache.clear()
+        for key in list(self.mask_cache.keys()):
+            del self.mask_cache[key]
+        self.mask_cache.clear()
         torch.cuda.empty_cache()
         gc.collect()
+
+
+# ------------------------------------------------------------------------------------
 
 
 class SingleVariableDataset_v7(Dataset):

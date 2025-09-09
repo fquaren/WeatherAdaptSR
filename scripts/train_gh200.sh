@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name UNet_mix
+#SBATCH --job-name UNet
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -13,23 +13,24 @@
 #SBATCH --gres-flags enforce-binding
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --mem 250G
+#SBATCH --mem 500G
 #SBATCH --time 72:00:00
 
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("UNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
-methods=("single") # "cross-val" "cross-val" "mmd")
+models=("HomoscedasticUNet_BN_Dropout")
+methods=("single")
 seeds=(0)
+
 # exp_dir="/scratch/fquareng/experiments/single-10x"
 # experiments=("$exp_dir/8qd3" "$exp_dir/ahc0" "$exp_dir/epsf" "$exp_dir/h78o" "$exp_dir/jfk5" "$exp_dir/l778" "$exp_dir/oxjb" "$exp_dir/rnjb" "$exp_dir/rrqg" "$exp_dir/x586") # "$exp_dir/" "$exp_dir/" "$exp_dir/")
 # exp="${experiments[$i]}"
 # --resume_exp "$exp" \
 
 for i in "${!seeds[@]}"; do
-    model="UNet"
-    method="single"
+    model="${models[$i]}"
+    method="${methods[$i]}"
     seed="${seeds[$i]}"
     
     singularity exec --nv "$container_path" \

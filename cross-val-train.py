@@ -7,6 +7,7 @@ import argparse
 import pandas as pd
 import optuna
 import gc
+import json
 import numpy as np
 from data.dataloader import (
     get_single_cluster_dataloader,
@@ -171,6 +172,17 @@ def main():
             logger.info(f"METHOD: 'single' will train on {cluster_to_process}.")
             single_cluster = True
 
+            # Load statistics for UNet
+            statistics_path = os.path.join(data_path, config["paths"]["stats_path"])
+            logger.info(f"Loading normalization stats from {statistics_path}")
+            with open(statistics_path, "r") as f:
+                stats = json.load(f)
+                pretty_stats = json.dumps(stats, indent=4)
+            precip_stats = {
+                "mean": stats["TOT_PREC_input"]["clusters"][cluster_to_process]["mean"],
+                "std": stats["TOT_PREC_input"]["pooled_std"],
+            }
+
             # Hyperparameter optimization
             if config["optimization"]["num_epochs"] != 0:
                 logger.info(
@@ -179,7 +191,7 @@ def main():
                 num_epochs = config["optimization"]["num_epochs"]
 
                 logger.info(f"MODEL: Loading model: {model_name} ...")
-                model = getattr(unet, model_name)()
+                model = getattr(unet, model_name)(precip_stats=precip_stats)
                 if model is None:
                     logger.info(f"MODEL: Model {model_name} not found.")
                     return
@@ -220,11 +232,9 @@ def main():
                             "weight_decay": study.best_params["weight_decay"],
                         }
                     )
-                    # Update lr_loss based on the new lr_ratio
                     ds["loss_params"].update(
                         {
-                            "lr_loss": study.best_params["lr_model"]
-                            * study.best_params["lr_ratio"],
+                            "lr_loss": study.best_params["lr_loss"],
                             "weight_decay": 0.0,
                         }
                     )
@@ -241,8 +251,8 @@ def main():
 
             # Training
             logger.info(f"TRAINING: Starting training for method: {method}")
-            logger.info(f"MODEL: Loading model: {model_name} ...")
-            model = getattr(unet, model_name)()
+            logger.info(f"MODEL: Loading model: {model_name} ... with {pretty_stats}")
+            model = getattr(unet, model_name)(precip_stats=precip_stats)
             if torch.cuda.device_count() > 1:
                 logger.info(f"MODEL: Using {torch.cuda.device_count()} GPUs!")
                 model = torch.nn.DataParallel(model)
