@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name eval_UNet
+#SBATCH --job-name eval
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -19,10 +19,10 @@
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 container_path="/users/fquareng/singularity/dl_gh200.sif"
 
-models=("HomoscedasticUNet_BN_Dropout")
-methods=("cross-val")
-exp_dir="/scratch/fquareng/experiments/homoscedastic_DA_v1" 
-experiments=("$exp_dir/8lyh")
+models=("HomoscedasticUNet") # "HomoscedasticUNet_BN_Dropout")
+methods=("cross-val") # "cross-val")
+exp_dir="/scratch/fquareng/experiments/homoscedastic_DA_v1/" 
+experiments=("$exp_dir/b4es")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"

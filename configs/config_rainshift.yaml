@@ -1,0 +1,49 @@
+DEVICE : "cuda"
+SOURCE_DOMAIN: "europe_west"
+TARGET_DOMAIN: "west-africa"
+DATA_ROOT: "/work/FAC/FGSE/IDYST/tbeucler/downscaling/raw_data/rainshift"
+STATS_FILE: "normalization_stats.json"
+
+DOMAIN_LIST: [
+  "africa-south",
+  "amazon-basin",
+  "arabian-peninsula",
+  "australasia-east",
+  "blacksea",
+  "cape-horn",
+  "caribbean",
+  "east-asia-north-east",
+  "east-asia-south",
+  "europe_west",
+  "horn-of-africa",
+  "melanesia",
+  "northamerica-east",
+  "northamerica-west",
+  "southamerica-east",
+  "southeastasia-west",
+  "tibetan-plateau",
+  "west-africa",
+]
+VAR_LIST: [
+  "cape",
+  "cp",
+  "sp",
+  "tclw",
+  "tcw",
+  "tisr",
+  "tp",
+  "u",
+  "v"
+]
+STATIC_VAR_LIST: ["lsm", "z"]
+OUTPUT_VAR: "precipitation"
+
+# Analysis Hyperparameters
+N_SAMPLES: 10000  # Samples to draw per domain. Adjust based on memory.
+N_BINS: 100  # Bins for histogram-based metrics
+
+# Training Hyperparameters
+NUM_EPOCHS: 20
+BATCH_SIZE: 128
+LEARNING_RATE: 0.0001
+NUM_WORKERS: 4

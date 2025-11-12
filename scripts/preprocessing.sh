@@ -10,9 +10,10 @@
 
 #SBATCH --partition cpu
 #SBATCH --nodes 1
-#SBATCH --cpus-per-task 32
-#SBATCH --mem 10G
-#SBATCH --time 05:00:00
+#SBATCH --cpus-per-task 4
+#SBATCH --mem 50G
+#SBATCH --time 24:00:00
 
 source /users/fquareng/.bashrc
-micromamba -n dl run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_v2.py
+micromamba activate dl-torch
+micromamba -n dl-torch run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_rainshift.py

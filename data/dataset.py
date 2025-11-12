@@ -1,486 +1,255 @@
-import os
 import torch
+import xarray as xr
 import numpy as np
+import torch.nn.functional as F
 from torch.utils.data import Dataset
-import gc
-import random
 
 
-class SingleVariableDataset_v8(Dataset):
+class ClimateSRDataset(Dataset):
+    """
+    Custom PyTorch Dataset for lazily loading the Zarr climate data.
+    This version handles the 2.5x super-resolution task by
+    pre-upsampling low-resolution inputs to match the high-resolution output.
+
+    This class handles splitting the 'train_data_...' files into
+    a training and a validation set based on a random, seeded shuffle.
+    """
+
     def __init__(
         self,
-        data_dir,
-        elev_dir,
+        cluster_path,
         split="train",
-        device="cuda",
-        use_theta_e=False,
-        vars=None,
-        augment=False,
-        elev_mean=None,
-        elev_std=None,
+        normalization_stats=None,
+        input_vars=None,
+        output_var="precipitation",
+        static_vars=["lsm", "z"],
+        # New arguments for validation splitting
+        validation_split_pct=0.2,
+        seed=42,
     ):
-        """
-        Dataset loading data onto GPU, with optional normalization, elevation, land-mask, and augmentation.
 
-        Args:
-            data_dir (str): Directory containing input/target .npy files.
-            elev_dir (str): Directory with individual elevation .npy files.
-            split (str): 'train', 'val', etc.
-            device (str): 'cuda' or 'cpu'.
-            augment (bool): Whether to apply augmentation (train only).
-            elev_mean/elev_std: Elevation normalization stats.
-        """
-        self.device = device
-        self.split = split
-        self.augment = augment
-        self.elev_dir = elev_dir
-        self.mask_dir = os.path.join(elev_dir, "land_masks")
-        self.elev_mean = elev_mean
-        self.elev_std = elev_std
-        self.elev_cache = {}
-        self.mask_cache = {}
+        # Split now refers to 'train' or 'validation' subset
+        if split not in ["train", "validation"]:
+            raise ValueError("split must be 'train' or 'validation'")
 
-        # Load input and target variables
-        input_list = []
-        target_list = []
-        coarse_input_list = []
+        if input_vars is None:
+            # All 9 dynamic input variables from train_data_in.zarr
+            self.input_vars = [
+                "cape",
+                "cp",
+                "sp",
+                "tclw",
+                "tcw",
+                "tisr",
+                "tp",
+                "u",
+                "v",
+            ]
+        else:
+            self.input_vars = input_vars
 
-        for var in vars:
-            # High-resolution (interpolated) input
-            input_path = os.path.join(
-                data_dir, f"{split}_{var}_input_normalized_interp8x_bilinear.npy"
-            )
-            # High-resolution target
-            target_path = os.path.join(data_dir, f"{split}_{var}_target_normalized.npy")
+        self.output_var = output_var
+        self.static_vars = static_vars
 
-            # Path for coarse resolution input
-            coarse_path = os.path.join(data_dir, f"{split}_{var}_input_normalized.npy")
+        # 1. Open Zarr stores lazily
+        zarr_in_path = f"{cluster_path}/train_data_in.zarr"
+        zarr_out_path = f"{cluster_path}/train_data_out.zarr"
 
-            input_data = np.load(input_path)
-            target_data = np.load(target_path)
-            coarse_data = np.load(coarse_path)
+        try:
+            # Open the dataset, respecting its native on-disk chunking
+            _ds_in = xr.open_zarr(zarr_in_path)
+            _ds_out = xr.open_zarr(zarr_out_path)
 
-            input_list.append(torch.tensor(input_data, dtype=torch.float32))
-            target_list.append(torch.tensor(target_data, dtype=torch.float32))
-            coarse_input_list.append(torch.tensor(coarse_data, dtype=torch.float32))
+            # Now, tell Dask to re-chunk the data in memory to match our access pattern.
+            # This is far more efficient than overriding the chunks at load time.
+            self.ds_in = _ds_in.chunk({"time": 1})
+            self.ds_out = _ds_out.chunk({"time": 1})
+        except Exception as e:
+            print(f"Error opening Zarr stores at: {cluster_path}")
+            print("Please ensure the path is correct and Zarr files exist.")
+            raise e
 
-        # Stack along channel dim -> [samples, channels, H, W]
-        self.input_data = torch.stack(input_list, dim=1).to(device)
-        self.target_data = torch.stack(target_list, dim=1).to(device)
-        self.coarse_input_data = torch.stack(coarse_input_list, dim=1).to(device)
+        # 2. Load static NetCDF (it's small)
+        self.ds_static = xr.open_dataset(f"{cluster_path}/static_variables.nc").load()
 
-        # Load locations
-        location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
-        self.locations = np.load(location_path)
+        # 3. Get number of samples and target shape
+        self.num_samples_total = len(self.ds_in["time"])
+        self.target_shape = (len(self.ds_static["latitude"]), len(self.ds_static["longitude"]))
 
-    def __len__(self):
-        return self.input_data.shape[0]
+        # 4. Store normalization stats
+        if normalization_stats is None:
+            raise ValueError("normalization_stats must be provided.")
+        self.stats = normalization_stats
 
-    def __getitem__(self, idx):
-        # Retrieve samples for all data types
-        input_sample = self.input_data[idx]
-        target_sample = self.target_data[idx]
-        coarse_input_sample = self.coarse_input_data[idx]
-        location_name = tuple(self.locations[idx])
+        self.log_transform_epsilon = 1e-6
 
-        # Load and normalize elevation
-        if location_name not in self.elev_cache:
-            elev_path = os.path.join(
-                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
-            )
-            elev_array = np.load(elev_path)
-            elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
-            if self.elev_mean is not None and self.elev_std is not None:
-                elev_tensor = (elev_tensor - self.elev_mean) / self.elev_std
-                elev_tensor = torch.log(elev_tensor * 1000 + 1e5)
-            self.elev_cache[location_name] = elev_tensor.to(self.device)
-        elev_sample = self.elev_cache[location_name]
+        # --- 5. Create deterministic train/validation split ---
+        all_indices = np.arange(self.num_samples_total)
 
-        # Load land mask
-        if location_name not in self.mask_cache:
-            mask_path = os.path.join(
-                self.mask_dir, f"{location_name[0]}_{location_name[1]}_landmask.npy"
-            )
-            mask_array = np.load(mask_path)
-            mask_tensor = torch.tensor(mask_array, dtype=torch.float32).unsqueeze(0)
-            self.mask_cache[location_name] = mask_tensor.to(self.device)
-        mask_sample = self.mask_cache[location_name]
+        # Use a numpy RandomState for reproducible shuffling
+        rng = np.random.RandomState(seed)
+        rng.shuffle(all_indices)
 
-        # Apply augmentation only if split is 'train' and self.augment is True
-        if self.augment and self.split == "train":
-            (
-                input_sample,
-                elev_sample,
-                mask_sample,
-                target_sample,
-                coarse_input_sample,
-            ) = self.apply_augmentations(
-                input_sample,
-                elev_sample,
-                mask_sample,
-                target_sample,
-                coarse_input_sample,
-            )
+        split_point = int(self.num_samples_total * (1 - validation_split_pct))
 
-        return (
-            input_sample,
-            coarse_input_sample,
-            elev_sample,
-            mask_sample,
-            target_sample,
-        )
-
-    def apply_augmentations(
-        self, input_sample, elev_sample, mask_sample, target_sample, coarse_sample
-    ):
-        """
-        Applies random rotation, flipping, and additive noise to the tensors.
-        """
-        # Random Rotation (0, 90, 180, 270 degrees)
-        # We rotate by swapping dimensions, which is a fast operation.
-        if random.random() < 0.5:
-            # Rotate 90, 180, or 270 degrees
-            k = random.randint(1, 3)
-            input_sample = torch.rot90(input_sample, k, dims=[1, 2])
-            elev_sample = torch.rot90(elev_sample, k, dims=[1, 2])
-            mask_sample = torch.rot90(mask_sample, k, dims=[1, 2])
-            target_sample = torch.rot90(target_sample, k, dims=[1, 2])
-            coarse_sample = torch.rot90(coarse_sample, k, dims=[1, 2])
-
-        # Random Horizontal Flip
-        if random.random() < 0.5:
-            input_sample = torch.flip(input_sample, dims=[2])
-            elev_sample = torch.flip(elev_sample, dims=[2])
-            mask_sample = torch.flip(mask_sample, dims=[2])
-            target_sample = torch.flip(target_sample, dims=[2])
-            coarse_sample = torch.flip(coarse_sample, dims=[2])
-
-        # Random Vertical Flip
-        if random.random() < 0.5:
-            input_sample = torch.flip(input_sample, dims=[1])
-            elev_sample = torch.flip(elev_sample, dims=[1])
-            mask_sample = torch.flip(mask_sample, dims=[1])
-            target_sample = torch.flip(target_sample, dims=[1])
-            coarse_sample = torch.flip(coarse_sample, dims=[1])
-
-        # Additive Noise
-        # Noise is only added to the input data, not the targets, masks, or elevation.
-        noise_std = 0.05  # Standard deviation of the noise. Adjust as needed.
-        noise = noise_std * torch.randn_like(input_sample)
-        input_sample += noise
-
-        return input_sample, elev_sample, mask_sample, target_sample, coarse_sample
-
-    def unload_from_gpu(self):
-        del self.input_data
-        del self.coarse_input_data
-        del self.target_data
-        for key in list(self.elev_cache.keys()):
-            del self.elev_cache[key]
-        self.elev_cache.clear()
-        for key in list(self.mask_cache.keys()):
-            del self.mask_cache[key]
-        self.mask_cache.clear()
-        torch.cuda.empty_cache()
-        gc.collect()
-
-
-# ------------------------------------------------------------------------------------
-
-
-class SingleVariableDataset_v7(Dataset):
-    def __init__(
-        self,
-        data_dir,
-        elev_dir,
-        split="train",
-        use_theta_e=False,
-        device="cuda",
-        temp_mean=None,
-        temp_std=None,
-        elev_mean=None,
-        elev_std=None,
-    ):
-        """
-        Dataset loading all data directly onto GPU memory with optional normalization.
-        """
-        self.device = device
-        self.suffix = "theta_e" if use_theta_e else "T_2M"
-
-        # Load full input & target into GPU
-        input_path = os.path.join(
-            data_dir, f"{split}_{self.suffix}_input_interp8x_bicubic.npy"
-        )
-        target_path = os.path.join(data_dir, f"{split}_{self.suffix}_target.npy")
-        location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
-
-        self.input_data = (
-            torch.tensor(np.load(input_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
-        self.target_data = (
-            torch.tensor(np.load(target_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
-        self.locations = np.load(location_path)
-
-        self.elev_dir = elev_dir
-        self.elev_cache = {}
-
-        self.temp_mean = temp_mean
-        self.temp_std = temp_std
-        self.elev_mean = elev_mean
-        self.elev_std = elev_std
+        if split == "train":
+            self.indices = all_indices[:split_point]
+            print(f"Loaded 'train' split: {len(self.indices)} samples.")
+        else:  # split == "validation"
+            self.indices = all_indices[split_point:]
+            print(f"Loaded 'validation' split: {len(self.indices)} samples.")
+        # --- End Modification ---
 
     def __len__(self):
-        return self.input_data.shape[0]
+        # Return the length of the subset of indices
+        return len(self.indices)
+
+    def _normalize(self, data, var_name):
+        mean, std = self.stats[var_name]
+        return (data - mean) / (std + 1e-8)
 
     def __getitem__(self, idx):
-        input_sample = self.input_data[idx]
-        target_sample = self.target_data[idx]
-
-        # Normalize temperature
-        if self.temp_mean is not None and self.temp_std is not None:
-            input_sample = (input_sample - self.temp_mean) / self.temp_std
-
-        location_name = tuple(self.locations[idx])
-        if location_name not in self.elev_cache:
-            elev_path = os.path.join(
-                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
-            )
-            elev_array = np.load(elev_path)
-            elev_tensor = torch.tensor(elev_array, dtype=torch.float32).unsqueeze(0)
-
-            # Normalize elevation
-            if self.elev_mean is not None and self.elev_std is not None:
-                elev_tensor = (elev_tensor - self.elev_mean) / self.elev_std
-
-            self.elev_cache[location_name] = elev_tensor.to(self.device)
-
-        elev_sample = self.elev_cache[location_name]
-        return input_sample, elev_sample, target_sample
-
-    def unload_from_gpu(self):
-        del self.input_data
-        del self.target_data
-        for key in list(self.elev_cache.keys()):
-            del self.elev_cache[key]
-        self.elev_cache.clear()
-        torch.cuda.empty_cache()
-        gc.collect()
-
-
-class SingleVariableDataset_v6(Dataset):
-    def __init__(
-        self, data_dir, elev_dir, split="train", use_theta_e=False, device="cuda"
-    ):
         """
-        Dataset loading all data directly onto GPU memory.
-
-        Args:
-            data_dir (str): Directory containing input/target .npy files.
-            elev_dir (str): Directory with individual elevation .npy files.
-            split (str): 'train', 'val', etc.
-            use_theta_e (bool): If True, use theta_e files.
-            device (str): 'cuda' or 'cpu'.
+        Fetch a single sample (timestep) from the Zarr store.
         """
-        self.device = device
-        self.suffix = "theta_e" if use_theta_e else "T_2M"
 
-        # Load full input & target into GPU
-        input_path = os.path.join(
-            data_dir, f"{split}_{self.suffix}_input_normalized_interp8x_bicubic.npy"
-        )
-        target_path = os.path.join(
-            data_dir, f"{split}_{self.suffix}_target_normalized.npy"
-        )
-        location_path = os.path.join(data_dir, f"{split}_LOCATION.npy")
+        # Map the relative index 'idx' to the true Zarr index
+        zarr_index = self.indices[idx]
 
-        self.input_data = (
-            torch.tensor(np.load(input_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
-        self.target_data = (
-            torch.tensor(np.load(target_path), dtype=torch.float32)
-            .unsqueeze(1)
-            .to(device)
-        )
-        self.locations = np.load(location_path)
+        # --- 1. Load Dynamic Inputs (Low-Res) ---
+        input_data_list = []
+        for var in self.input_vars:
+            # Use zarr_index
+            data = self.ds_in[var].isel(time=zarr_index).values
 
-        self.elev_dir = elev_dir
-        self.elev_cache = {}
+            # --- CRITICAL: Unit Conversion ---
+            if var == "tp":
+                data = data * 1000.0  # Convert (m) to (mm)
+            # --- End Unit Conversion ---
 
-    def __len__(self):
-        return self.input_data.shape[0]
+            data_normalized = self._normalize(data, var)
+            input_data_list.append(data_normalized)
 
-    def __getitem__(self, idx):
-        input_sample = self.input_data[idx]
-        target_sample = self.target_data[idx]
+        # Stack into (C_low_res, H_low, W_low)
+        x_low_res = np.stack(input_data_list, axis=0)
 
-        location_name = tuple(self.locations[idx])
-        if location_name not in self.elev_cache:
-            elev_path = os.path.join(
-                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
-            )
-            elev_array = np.load(elev_path)
-            self.elev_cache[location_name] = (
-                torch.tensor(elev_array, dtype=torch.float32)
-                .unsqueeze(0)
-                .to(self.device)
-            )
+        # Convert to tensor for upsampling
+        x_low_res_tensor = torch.from_numpy(x_low_res).float()
 
-        elev_sample = self.elev_cache[location_name]
+        # --- 2. Upsample Inputs ---
+        x_high_res_tensor = F.interpolate(
+            x_low_res_tensor.unsqueeze(0),
+            size=self.target_shape,
+            mode="bilinear",
+            align_corners=False,
+        ).squeeze(0)
 
-        return input_sample, elev_sample, target_sample
+        # --- 3. Load Static Inputs (High-Res) ---
+        static_data_list = []
+        for var in self.static_vars:
+            data = self.ds_static[var].values
+            data_normalized = self._normalize(data, var)
+            static_data_list.append(data_normalized)
 
-    def unload_from_gpu(self):
-        del self.input_data
-        del self.target_data
+        x_static_tensor = torch.from_numpy(np.stack(static_data_list, axis=0)).float()
 
-        for key in list(self.elev_cache.keys()):
-            del self.elev_cache[key]
-        self.elev_cache.clear()  # Just to be safe
+        # --- 4. Concatenate Inputs ---
+        # (9, 200, 200) + (2, 200, 200) -> (11, 200, 200)
+        x_final = torch.cat([x_high_res_tensor, x_static_tensor], axis=0)
 
-        torch.cuda.empty_cache()
-        gc.collect()
+        # --- 5. Load Output (High-Res) ---
+        # Use zarr_index
+        y_raw = self.ds_out[self.output_var].isel(time=zarr_index).values
+
+        # Apply log-transform and normalization
+        y_log = np.log(y_raw + self.log_transform_epsilon)
+        y_norm = self._normalize(y_log, self.output_var)
+
+        # Add a channel dimension: (H, W) -> (1, H, W)
+        y_final = torch.from_numpy(y_norm).float().unsqueeze(0)
+
+        return x_final, y_final
 
 
-class SingleVariableDataset_v5(Dataset):
-    def __init__(self, data_dir, elev_dir, split="train", use_theta_e=False):
-        """
-        Dataset using memory mapping + efficient elevation loading.
+# --- Test Harness ---
+if __name__ == "__main__":
+    """
+    This block demonstrates how to use the modified Dataset class
+    and verifies that the train/validation splits are correct.
+    """
 
-        Args:
-            data_dir (str): Base dir with input/target .npy files.
-            split (str): Dataset split ('train', 'val', etc).
-            use_theta_e (bool): Use theta_e variable if True.
-            elev_dir (str): Directory containing preconverted .npy elevation files.
-            location_file (str): Path to e.g. train_LOCATION.npy.
-        """
-        self.suffix = "theta_e" if use_theta_e else "T_2M"
+    # load config
+    import yaml
+    import json
 
-        # Memory-mapped input/target
-        self.input_data = np.load(
-            os.path.join(data_dir, f"{split}_{self.suffix}_input_bicubic.npy"),
-            mmap_mode="r",
-        )
-        self.target_data = np.load(
-            os.path.join(data_dir, f"{split}_{self.suffix}_target_normalized.npy"),
-            mmap_mode="r",
-        )
-        self.location_file = os.path.join(data_dir, f"{split}_LOCATION.npy")
-        self.elev_dir = elev_dir
+    with open("configs/config_rainshift.yaml", "r") as f:
+        config = yaml.safe_load(f)
 
-        # Location metadata
-        self.locations = np.load(self.location_file)  # shape (N, 2), dtype=int
+    CLUSTER_PATH = config["DATA_ROOT"] + "/" + config["SOURCE_DOMAIN"]
+    STATS_FILE = config["DATA_ROOT"] + "/" + config["STATS_FILE"]
 
-        # Elevation cache: maps location name (e.g., "A_B") → torch.Tensor
-        self.elev_cache = {}
+    try:
+        with open(STATS_FILE, "r") as f:
+            stats = json.load(f)
+        print(f"Successfully loaded stats from {STATS_FILE}")
+    except FileNotFoundError:
+        print(f"Error: Stats file not found at {STATS_FILE}")
+        print("Please run compute_stats.py first and update the path.")
+        stats = None
+    except Exception as e:
+        print(f"Error loading stats: {e}")
+        stats = None
 
-    def __len__(self):
-        return self.input_data.shape[0]
-
-    def __getitem__(self, idx):
-        input_sample = torch.tensor(
-            self.input_data[idx], dtype=torch.float32
-        ).unsqueeze(0)
-        target_sample = torch.tensor(
-            self.target_data[idx], dtype=torch.float32
-        ).unsqueeze(0)
-
-        location_name = tuple(self.locations[idx])
-        if location_name not in self.elev_cache:
-            elev_path = os.path.join(
-                self.elev_dir, f"{location_name[0]}_{location_name[1]}_dem.npy"
-            )
-            elev_array = np.load(elev_path)
-            self.elev_cache[location_name] = torch.tensor(
-                elev_array, dtype=torch.float32
-            ).unsqueeze(0)
-
-        elev_sample = self.elev_cache[location_name]
-
-        return input_sample, elev_sample, target_sample
-
-
-class SingleVariableDataset_v4(Dataset):
-    def __init__(self, data_dir, split="train", use_theta_e=False):
-        """
-        Dataset that loads data lazily using memory mapping.
-
-        Args:
-            data_dir (str): Directory containing the .npy files.
-            split (str): Dataset split prefix, e.g., 'train'.
-            use_theta_e (bool): Whether to use equivalent potential temperature.
-        """
-        suffix = "theta_e" if use_theta_e else "T_2M"
-
-        # File paths
-        self.input_path = os.path.join(data_dir, f"{split}_{suffix}_input_bicubic.npy")
-        self.elev_path = os.path.join(data_dir, f"{split}_HSURF.npy")
-        self.target_path = os.path.join(
-            data_dir, f"{split}_{suffix}_target_normalized.npy"
+    if stats:
+        print("\n--- Instantiating Training Set ---")
+        train_dataset = ClimateSRDataset(
+            cluster_path=CLUSTER_PATH,
+            split="train",
+            normalization_stats=stats,
+            validation_split_pct=0.2,  # 80% for train
+            seed=42,
         )
 
-        # Use memory-mapped arrays to avoid loading all data into RAM
-        self.input_data = np.load(self.input_path, mmap_mode="r")
-        self.elev_data = np.load(self.elev_path, mmap_mode="r")
-        self.target_data = np.load(self.target_path, mmap_mode="r")
-
-    def __len__(self):
-        return self.input_data.shape[0]
-
-    def __getitem__(self, idx):
-        return self.input_data[idx], self.elev_data[idx], self.target_data[idx]
-
-
-class SingleVariableDataset_v3(Dataset):
-    def __init__(self, data_dir, split="train", use_theta_e=False, device="cpu"):
-        """
-        Args:
-            data_dir (str): Directory containing the .npy files.
-            split (str): Dataset split prefix, e.g., 'train'.
-            transform (str): Optional transformation identifier, e.g., 'theta_e'.
-        """
-        suffix = "theta_e" if use_theta_e else "T_2M"
-
-        self.input = (
-            torch.tensor(
-                np.load(f"{data_dir}/{split}_{suffix}_input_bicubic.npy"),
-                dtype=torch.float32,
-            )
-            .unsqueeze(1)
-            .to(device)
+        print("\n--- Instantiating Validation Set ---")
+        val_dataset = ClimateSRDataset(
+            cluster_path=CLUSTER_PATH,
+            split="validation",
+            normalization_stats=stats,
+            validation_split_pct=0.2,  # 20% for val
+            seed=42,  # Using the SAME seed is crucial
         )
 
-        self.elev = (
-            torch.tensor(
-                np.load(os.path.join(data_dir, f"{split}_HSURF.npy")),
-                dtype=torch.float32,
-            )
-            .unsqueeze(1)
-            .to(device)
-        )
+        # --- Verification ---
+        print("\n--- Verification ---")
+        total_samples = train_dataset.num_samples_total
+        train_samples = len(train_dataset)
+        val_samples = len(val_dataset)
 
-        self.target = (
-            torch.tensor(
-                np.load(f"{data_dir}/{split}_{suffix}_target_normalized.npy"),
-                dtype=torch.float32,
-            )
-            .unsqueeze(1)
-            .to(device)
-        )
+        print(f"Total samples in source:   {total_samples}")
+        print(f"Training subset samples:   {train_samples}")
+        print(f"Validation subset samples: {val_samples}")
+        print(f"Total in subsets:          {train_samples + val_samples}")
 
-    def __len__(self):
-        return self.input.shape[0]
+        assert total_samples == (train_samples + val_samples), "Error: Mismatch in sample counts!"
 
-    def __getitem__(self, idx):
-        return self.input[idx], self.elev[idx], self.target[idx]
+        # Check for overlap
+        train_indices_set = set(train_dataset.indices)
+        val_indices_set = set(val_dataset.indices)
 
-    def unload_from_gpu(self):
-        self.input = self.input.to("cpu")
-        self.target = self.target.to("cpu")
-        self.elev = self.elev.to("cpu")
+        overlap = train_indices_set.intersection(val_indices_set)
+
+        assert len(overlap) == 0, "Error: Overlap found between train and val sets!"
+
+        print("Test PASSED: Train/Validation splits are correct and have no overlap.")
+
+        # Test loading one item
+        print("\nTesting data loading...")
+        x, y = train_dataset[0]
+        print("Loaded one sample (X, y):")
+        print(f"  Input shape:  {x.shape}")  # Should be (11, 200, 200)
+        print(f"  Output shape: {y.shape}")  # Should be (1, 200, 200)
+
+        assert x.shape == (11, 200, 200), "Input shape mismatch!"
+        assert y.shape == (1, 200, 200), "Output shape mismatch!"
+
+        print("Test PASSED: Data loading shapes are correct.")

@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name oi1n_2
+#SBATCH --job-name all
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -20,21 +20,22 @@ module load singularityce/4.1.0
 container_path="/users/fquareng/singularity/dl_curnagl.sif"
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
-models=("HeteroscedasticUNet") #"UNet_DO_BN" "UNet_Noise" "UNet_MMD")
-methods=("cross-val") # "cross-val" "cross-val" "mmd")
-exp_dir="/scratch/fquareng/experiments/cross-val-v8"
-resume=("$exp_dir/oi1n_2")
+models=("HomoscedasticUNet") # "HomoscedasticUNet_BN_Dropout")
+methods=("single") # "single")
+seeds=(0) # 0)
+augmentations=(False) # True)
 
-for i in "${!models[@]}"; do
+for i in "${!seeds[@]}"; do
     model="${models[$i]}"
     method="${methods[$i]}"
-    exp="${resume[$i]}"
+    seed="${seeds[$i]}"
+    augmentation="${augmentations[$i]}"
     
     singularity exec --nv "$container_path" \
         python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/cross-val-train.py \
         --model "$model" \
         --method "$method" \
-        --resume "$exp"
-
+        --seed "$seed" \
+        --augmentation "$augmentation" &
 done
 wait

@@ -21,9 +21,9 @@ container_path="/users/fquareng/singularity/dl_curnagl.sif"
 export SINGULARITY_BINDPATH="/work,/scratch,/users"
 
 models=("HomoscedasticUNet")
-methods=("cross-val")
-exp_dir="/scratch/fquareng/experiments/homoscedastic_v2" 
-experiments=("$exp_dir/o31h")
+methods=("all")
+exp_dir="/scratch/fquareng/experiments/homoscedastic_DA_v1/" 
+experiments=("$exp_dir/b4es")
 
 for i in "${!models[@]}"; do
     model="${models[$i]}"
