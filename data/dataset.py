@@ -178,7 +178,7 @@ if __name__ == "__main__":
     and verifies that the train/validation splits are correct.
     """
 
-    # load config
+    # Load config
     import yaml
     import json
 

@@ -1,0 +1,153 @@
+# domains_config.yaml
+# Extracted from Table 1 and Table 4 of the experimental specification.
+
+domains:
+  # -------------------------------------------------------------------
+  # C1: Alpine Arc (Orographic / Ice Regime)
+  # -------------------------------------------------------------------
+  C1_Alpine_Arc:
+    bounds_wgs84:
+      lon_min: 5.0
+      lon_max: 15.0
+      lat_min: 44.0
+      lat_max: 48.0
+    # Strict arc avoiding the Po Valley convective basin
+    valid_polygon: [
+      [5.5, 44.0],   # SW: Maritime Alps
+      [6.2, 45.5],   # W:  French Alps
+      [6.5, 46.5],   # NW: Lake Geneva Region
+      [9.0, 47.6],   # N:  Swiss/German Border
+      [13.0, 47.8],  # NE: Austrian Alps
+      [15.0, 47.5],  # E:  Eastern edge (clipped to 15E bound)
+      [14.5, 46.0],  # SE: Carnic Alps
+      [12.0, 46.0],  # S:  Dolomites
+      [10.5, 45.8],  # S:  Bergamo Alps (Strictly North of Po)
+      [9.0, 45.7],   # S:  Lake Como Region
+      [8.0, 45.3],   # S:  Piedmont Alps
+      [7.2, 44.5]    # SW: Ligurian Alps
+    ]
+
+  # -------------------------------------------------------------------
+  # C2: Po Valley (Convective / Supercell Regime)
+  # -------------------------------------------------------------------
+  C2_Po_Valley:
+    bounds_wgs84:
+      lon_min: 8.0
+      lon_max: 13.0
+      lat_min: 44.0
+      lat_max: 46.0
+    # Strict basin avoiding the Alpine foothills and Apennines
+    valid_polygon: [
+      [8.5, 44.8],   # W:  Near Turin
+      [9.0, 45.2],   # N:  South of Milan
+      [11.0, 45.3],  # N:  South of Verona
+      [12.5, 45.0],  # E:  Venetian Lagoon
+      [12.0, 44.3],  # S:  North of Bologna
+      [9.5, 44.8]    # S:  North of Piacenza
+    ]
+
+  # -------------------------------------------------------------------
+  # C3: Iberian Meseta (Thermal Lows / Arid Regime)
+  # -------------------------------------------------------------------
+  C3_Iberian_Meseta:
+    bounds_wgs84:
+      lon_min: -6.0   # 6W
+      lon_max: 1.0    # 1E
+      lat_min: 38.0
+      lat_max: 42.0
+    # Isolating the high central plateau; avoiding Mediterranean coastal physics
+    valid_polygon: [
+      [-5.5, 38.5],
+      [-5.5, 41.5],
+      [-1.5, 41.5],
+      [-0.5, 40.0],
+      [-2.0, 38.5]
+    ]
+
+  # -------------------------------------------------------------------
+  # C4: Mediterranean Coast (Maritime / Warm Regime)
+  # -------------------------------------------------------------------
+  C4_Med_Coast:
+    bounds_wgs84:
+      lon_min: 13.0
+      lon_max: 19.0
+      lat_min: 40.0
+      lat_max: 45.0
+    # Capturing the Adriatic and Ionian maritime influence over S. Italy/Balkans
+    valid_polygon: [
+      [13.5, 40.5],
+      [14.0, 42.5],
+      [15.5, 44.5],
+      [18.0, 44.5],
+      [18.5, 40.5]
+    ]
+
+  # -------------------------------------------------------------------
+  # C5: North Germany (Stratiform / Flat Regime)
+  # -------------------------------------------------------------------
+  C5_N_Germany:
+    bounds_wgs84:
+      lon_min: 7.0
+      lon_max: 14.0
+      lat_min: 51.0
+      lat_max: 54.0
+    # Buffered rectangle to prevent padding edge-effects
+    valid_polygon: [
+      [7.5, 51.5],
+      [7.5, 53.5],
+      [13.5, 53.5],
+      [13.5, 51.5]
+    ]
+
+  # -------------------------------------------------------------------
+  # C6: Scandinavia (Snow Microphysics / Polar Regime)
+  # -------------------------------------------------------------------
+  C6_Scandinavia:
+    bounds_wgs84:
+      lon_min: 5.0
+      lon_max: 15.0
+      lat_min: 58.0
+      lat_max: 63.0
+    # Buffered rectangle over the Scandinavian mountains
+    valid_polygon: [
+      [6.0, 58.5],
+      [6.0, 62.5],
+      [14.0, 62.5],
+      [14.0, 58.5]
+    ]
+
+  # -------------------------------------------------------------------
+  # C7: Carpathian (Rough Topography / Data Scarce Regime)
+  # -------------------------------------------------------------------
+  C7_Carpathian:
+    bounds_wgs84:
+      lon_min: 22.0
+      lon_max: 28.0
+      lat_min: 45.0
+      lat_max: 49.0
+    # Following the crescent shape of the Carpathian mountains
+    valid_polygon: [
+      [22.5, 45.5],
+      [23.0, 47.0],
+      [25.0, 48.5],
+      [27.0, 48.0],
+      [26.0, 46.0],
+      [24.0, 45.0]
+    ]
+
+  # -------------------------------------------------------------------
+  # C8: Atlantic (Pure Marine Regime)
+  # -------------------------------------------------------------------
+  C8_Atlantic:
+    bounds_wgs84:
+      lon_min: -10.0  # 10W
+      lon_max: -5.0   # 5W
+      lat_min: 48.0
+      lat_max: 52.0
+    # Buffered rectangle to ensure strictly ocean pixels
+    valid_polygon: [
+      [-9.5, 48.5],
+      [-9.5, 51.5],
+      [-5.5, 51.5],
+      [-5.5, 48.5]
+    ]

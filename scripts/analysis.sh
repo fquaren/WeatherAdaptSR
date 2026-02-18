@@ -22,4 +22,4 @@
 
 source /users/fquareng/.bashrc
 micromamba activate dl-torch
-micromamba run -n dl-torch python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/analysis.py
+micromamba run -n dl-torch python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/analysis.py --metrics_type sample
