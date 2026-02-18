@@ -13,7 +13,7 @@
 #SBATCH --ntasks 1
 #SBATCH --cpus-per-task 4
 #SBATCH --mem 350G
-#SBATCH --time 72:00:00
+#SBATCH --time 12:00:00
 
 # export SINGULARITY_BINDPATH="/work,/scratch,/users"
 # export SINGULARITYENV_LD_PRELOAD="/opt/hpcx/ucc/lib/libucc.so.1:/opt/hpcx/ucx/lib/libucp.so.0:/opt/hpcx/ucx/lib/libucs.so.0" 

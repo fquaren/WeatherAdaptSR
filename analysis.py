@@ -6,136 +6,74 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
-from scipy.stats import entropy, wasserstein_distance
-from sklearn.metrics.pairwise import rbf_kernel
 import xarray as xr
 import warnings
 
-# Suppress runtime warnings from divide-by-zero, etc.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+# --- 1. Metric Definition ---
 
-# --- 1. Metric Definitions ---
 
-
-def get_pdfs(samples_A, samples_B, n_bins=100):
+def wasserstein1d_gpu(samples_A, samples_B, device="mps"):
     """
-    Calculates normalized histograms (PDFs) for two 1D sample arrays.
+    1d wasserstein distance calculated on GPU using empirical inverse CDF matching.
     """
     if samples_A.size == 0 or samples_B.size == 0:
-        return np.ones(n_bins) / n_bins, np.ones(n_bins) / n_bins  # Return uniform dist for empty
-
-    # Find a common range
-    min_val = min(np.min(samples_A), np.min(samples_B))
-    max_val = max(np.max(samples_A), np.max(samples_B))
-
-    if min_val == max_val:  # Handle case where all data is identical
-        min_val -= 0.5
-        max_val += 0.5
-
-    bins = np.linspace(min_val, max_val, n_bins + 1)
-
-    # Compute histograms
-    pdf_A, _ = np.histogram(samples_A, bins=bins, density=True)
-    pdf_B, _ = np.histogram(samples_B, bins=bins, density=True)
-
-    # Add a small epsilon to avoid log(0) or division by zero
-    epsilon = 1e-10
-    pdf_A = (pdf_A + epsilon) / (pdf_A.sum() + epsilon * n_bins)
-    pdf_B = (pdf_B + epsilon) / (pdf_B.sum() + epsilon * n_bins)
-
-    return pdf_A, pdf_B
-
-
-def hellinger_distance(p, q):
-    """Hellinger distance for two 1D PDFs."""
-    return np.sqrt(0.5 * np.sum((np.sqrt(p) - np.sqrt(q)) ** 2))
-
-
-def jensen_shannon_divergence(p, q):
-    """Jensen-Shannon Divergence (JSD) for two 1D PDFs."""
-    m = 0.5 * (p + q)
-    jsd = 0.5 * (entropy(p, m) + entropy(q, m))
-    return np.sqrt(jsd)  # Return J-S Distance (sqrt of divergence) for a metric
-
-
-def wasserstein1d(samples_A, samples_B):
-    """1D Wasserstein distance (Earth-Mover's Distance)."""
-    if samples_A.size == 0 or samples_B.size == 0:
-        return np.nan
-    return wasserstein_distance(samples_A, samples_B)
-
-
-def mmd_rbf(X, Y, gamma=None):
-    """
-    Maximum Mean Discrepancy (MMD) with RBF kernel.
-    Works on 1D or 2D sample arrays (N_samples, N_features).
-    """
-    if X.size == 0 or Y.size == 0:
         return np.nan
 
-    if gamma is None:
-        # Use the median heuristic for gamma
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            median_dist = np.median(np.abs(X - np.median(X)))
-        gamma = 1.0 / (median_dist + 1e-8)
-        if not np.isfinite(gamma):
-            gamma = 1.0
+    t_A = torch.from_numpy(samples_A).to(device)
+    t_B = torch.from_numpy(samples_B).to(device)
 
-    # Reshape for sklearn
-    if X.ndim == 1:
-        X = X.reshape(-1, 1)
-    if Y.ndim == 1:
-        Y = Y.reshape(-1, 1)
+    # If shapes match exactly, direct sorting is the fastest operation
+    if t_A.shape[0] == t_B.shape[0]:
+        t_A, _ = torch.sort(t_A)
+        t_B, _ = torch.sort(t_B)
+        return torch.mean(torch.abs(t_A - t_B)).item()
 
-    K_XX = rbf_kernel(X, X, gamma=gamma).mean()
-    K_YY = rbf_kernel(Y, Y, gamma=gamma).mean()
-    K_XY = rbf_kernel(X, Y, gamma=gamma).mean()
+    # If shapes differ, align them via a common quantile grid to approximate the continuous integral
+    min_len = min(t_A.shape[0], t_B.shape[0])
+    quantiles = torch.linspace(0, 1, steps=min_len, device=device)
+    t_A = torch.quantile(t_A, quantiles)
+    t_B = torch.quantile(t_B, quantiles)
 
-    # Ensure non-negative result (can be slightly negative due to precision)
-    return np.maximum(0.0, K_XX + K_YY - 2 * K_XY)
+    return torch.mean(torch.abs(t_A - t_B)).item()
 
 
-# --- 2. Helper Functions ---
+# --- 2. Transformation Helper ---
 
 
-# --- New Dataset class for loading RAW data ---
+def arcsinh_transform(x, c=1.0):
+    """
+    Inverse hyperbolic sine transformation for variance stabilization.
+    Suitable for zero-inflated and negative-allowing atmospheric variables.
+    """
+    return np.arcsinh(x / c)
+
+
+# --- 3. Helper Functions ---
+
+
 class RawClimateDataset(Dataset):
-    """
-    Minimalist dataset to load RAW, UNNORMALIZED data from Zarr stores.
-    It only performs the essential 'tp' unit correction.
-    """
-
     def __init__(self, cluster_path, split, dynamic_vars, static_vars):
-
-        # Use 'train' data for 'validation' split, as in ClimateSRDataset
         zarr_split = "train" if split == "validation" else split
 
-        # --- Efficient Zarr loading ---
-        # 1. Open Zarr store respecting its on-disk chunks
         _ds_in = xr.open_zarr(os.path.join(cluster_path, f"{zarr_split}_data_in.zarr"))
-        # 2. Apply in-memory rechunking for our access pattern
         self.ds_in = _ds_in.chunk({"time": 1})
 
-        self.ds_static = xr.open_dataset(
-            os.path.join(cluster_path, "static_variables.nc")
-        ).load()  # Static is small, load it
+        self.ds_static = xr.open_dataset(os.path.join(cluster_path, "static_variables.nc")).load()
 
         self.dynamic_vars = dynamic_vars
         self.static_vars = static_vars
         self.num_samples = len(self.ds_in["time"])
 
-        # This dataset needs to know about the train/val split
-        # from the original dataset class to sample correctly
         all_indices = np.arange(self.num_samples)
-        rng = np.random.RandomState(42)  # Use same seed
+        rng = np.random.RandomState(42)
         rng.shuffle(all_indices)
-        split_point = int(self.num_samples * (1.0 - 0.2))  # 0.2 = validation_split_pct
+        split_point = int(self.num_samples * (1.0 - 0.2))
 
         if split == "train":
             self.indices = all_indices[:split_point]
-        else:  # split == "validation"
+        else:
             self.indices = all_indices[split_point:]
 
         self.split_num_samples = len(self.indices)
@@ -144,36 +82,24 @@ class RawClimateDataset(Dataset):
         return self.split_num_samples
 
     def __getitem__(self, idx):
-        # Map to the true index in the Zarr store
         true_idx = self.indices[idx]
-
         var_list = []
 
-        # 1. Load dynamic variables
         for var in self.dynamic_vars:
             data = self.ds_in[var].isel(time=true_idx).values
-            # --- Apply critical unit correction ---
             if var == "tp":
                 data = data * 1000.0
             var_list.append(data)
 
-        # 2. Load static variables
         for var in self.static_vars:
             data = self.ds_static[var].values
             var_list.append(data)
 
-        # Stack all 11 channels
         x = np.stack(var_list, axis=0)
-
-        # Return as a torch tensor for the DataLoader
         return torch.from_numpy(x).float()
 
 
-# --- New loading function ---
 def load_raw_samples(cluster_path, split, dynamic_vars, static_vars, num_samples_to_draw, n_workers=4):
-    """
-    Loads N random samples of RAW data from a given dataset split.
-    """
     try:
         dataset = RawClimateDataset(
             cluster_path=cluster_path, split=split, dynamic_vars=dynamic_vars, static_vars=static_vars
@@ -182,7 +108,6 @@ def load_raw_samples(cluster_path, split, dynamic_vars, static_vars, num_samples
         print(f"Error loading dataset for {cluster_path}: {e}. Returning empty array.")
         return np.array([])
 
-    # Create a random sampler
     if num_samples_to_draw > len(dataset):
         num_samples_to_draw = len(dataset)
 
@@ -200,7 +125,6 @@ def load_raw_samples(cluster_path, split, dynamic_vars, static_vars, num_samples
     )
 
     all_x = []
-    # The new dataset only returns x
     for x_batch in tqdm(loader, desc=f"Loading {num_samples_to_draw} samples", leave=False):
         all_x.append(x_batch.numpy())
 
@@ -211,9 +135,6 @@ def load_raw_samples(cluster_path, split, dynamic_vars, static_vars, num_samples
 
 
 def plot_matrix(matrix, title, labels, save_path):
-    """
-    Plots a heatmap of the distance matrix.
-    """
     plt.figure(figsize=(16, 12))
     sns.heatmap(
         matrix,
@@ -231,25 +152,19 @@ def plot_matrix(matrix, title, labels, save_path):
     plt.close()
 
 
-# --- 3. Main Script ---
+# --- 4. Main Script ---
 
 
 def main():
+    # Configure hardware accelerator
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+        print("Warning: Hardware acceleration not found, falling back to CPU.")
 
-    # --- Args ---
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Covariate Shift Analysis across Domains")
-    parser.add_argument(
-        "--metrics_type",
-        type=str,
-        default="pdf",
-        choices=["pdf", "sample"],
-        help="Type of metrics to compute: 'pdf' for PDF-based, 'sample' for sample-based",
-    )
-    args = parser.parse_args()
-
-    # --- Config ---
     current_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(current_dir, "configs/config_rainshift.yaml"), "r") as f:
         config = yaml.safe_load(f)
@@ -263,16 +178,11 @@ def main():
     N_DOMAINS = len(DOMAINS)
     N_VARS = len(VAR_NAMES)
     N_SAMPLES = config["N_SAMPLES"]
-    N_BINS = config["N_BINS"]
     N_WORKERS = config.get("NUM_WORKERS", 4)
 
-    MMD_SUBSAMPLE_SIZE = 100000
-
-    # Create base output directory
     output_dir = os.path.join(current_dir, "covariate_shift_analysis")
     os.makedirs(output_dir, exist_ok=True)
 
-    # --- 1. Load and Cache Data (RAW) ---
     print(f"Loading {N_SAMPLES} RAW samples from all 18 domains...")
     data_cache = {"test": {}}
 
@@ -285,23 +195,8 @@ def main():
             )
     print("Data caching complete.")
 
-    # --- 2. Select Metrics ---
-    metrics_pdf = {}
-    metrics_sample = {}
-    if args.metrics_type == "pdf":
-        print("Using PDF-based metrics for analysis.")
-        metrics_pdf = {
-            "Hellinger": hellinger_distance,
-            "JSD": jensen_shannon_divergence,
-        }
-    else:
-        print("Using Sample-based metrics for analysis.")
-        metrics_sample = {
-            "Wasserstein_1D": wasserstein1d,
-            "MMD_RBF": mmd_rbf,
-        }
+    metric_name = "Wasserstein_1D"
 
-    # --- 3. Compute Distance Matrices ---
     for analysis_type in ["raw", "normalized"]:
         print(f"\n{'='*70}")
         print(f"--- STARTING ANALYSIS: {analysis_type.upper()} DATA ---")
@@ -311,122 +206,57 @@ def main():
         os.makedirs(analysis_output_dir, exist_ok=True)
 
         for split in ["test"]:
-            print(f"\n--- Computing metrics for {split} split ---")
+            print(f"\n--- Computing {metric_name} for {split} split on {device} ---")
+            dist_matrix = np.zeros((N_VARS, N_DOMAINS, N_DOMAINS))
 
-            # --- PDF-based metrics ---
-            for metric_name, metric_func in metrics_pdf.items():
-                print(f"Calculating {metric_name} distance...")
-                dist_matrix = np.zeros((N_VARS, N_DOMAINS, N_DOMAINS))
+            for k in tqdm(range(N_VARS), desc=f"Variables"):
+                current_var = VAR_NAMES[k]
+                for i in range(N_DOMAINS):
+                    for j in range(i + 1, N_DOMAINS):
 
-                for k in tqdm(range(N_VARS), desc=f"Variables for {metric_name}"):
-                    for i in range(N_DOMAINS):
-                        for j in range(i + 1, N_DOMAINS):
+                        samples_A_all_vars = data_cache[split][DOMAINS[i]]
+                        samples_B_all_vars = data_cache[split][DOMAINS[j]]
 
-                            # --- Add check for valid data ---
-                            samples_A_all_vars = data_cache[split][DOMAINS[i]]
-                            samples_B_all_vars = data_cache[split][DOMAINS[j]]
+                        if samples_A_all_vars.ndim < 4 or samples_B_all_vars.ndim < 4:
+                            if i == 0 and j == 1 and k == 0:
+                                print(f"Warning: Data for {DOMAINS[i]} or {DOMAINS[j]} is invalid.")
+                            dist_matrix[k, i, j] = np.nan
+                            dist_matrix[k, j, i] = np.nan
+                            continue
 
-                            if samples_A_all_vars.ndim < 4 or samples_B_all_vars.ndim < 4:
-                                # This pair has failed-to-load data
-                                dist = np.nan
-                                dist_matrix[k, i, j] = dist
-                                dist_matrix[k, j, i] = dist
-                                continue
+                        samples_A = samples_A_all_vars[:, k].ravel()
+                        samples_B = samples_B_all_vars[:, k].ravel()
 
-                            samples_A = samples_A_all_vars[:, k].ravel()
-                            samples_B = samples_B_all_vars[:, k].ravel()
-
-                            # --- Conditional Normalization ---
-                            if analysis_type == "normalized":
+                        if analysis_type == "normalized":
+                            if current_var in ["tp", "cp", "lsp", "q", "total_precipitation"]:
+                                samples_A = arcsinh_transform(samples_A)
+                                samples_B = arcsinh_transform(samples_B)
+                            else:
                                 std_A = np.std(samples_A) + 1e-8
-                                if std_A > 1e-6:  # Only normalize if not constant
+                                if std_A > 1e-6:
                                     samples_A = (samples_A - np.mean(samples_A)) / std_A
 
                                 std_B = np.std(samples_B) + 1e-8
                                 if std_B > 1e-6:
                                     samples_B = (samples_B - np.mean(samples_B)) / std_B
 
-                            pdf_A, pdf_B = get_pdfs(samples_A, samples_B, n_bins=N_BINS)
-                            dist = metric_func(pdf_A, pdf_B)
-                            dist_matrix[k, i, j] = dist
-                            dist_matrix[k, j, i] = dist
+                        dist = wasserstein1d_gpu(samples_A, samples_B, device=device)
+                        dist_matrix[k, i, j] = dist
+                        dist_matrix[k, j, i] = dist
 
-                np.save(f"{analysis_output_dir}/{metric_name}_{split}.npy", dist_matrix)
-                for k in range(N_VARS):
-                    plot_matrix(
-                        dist_matrix[k],
-                        f"{metric_name} Distance - {VAR_NAMES[k]} ({split}, {analysis_type})",
-                        DOMAINS,
-                        f"{analysis_output_dir}/{metric_name}_{split}_{VAR_NAMES[k]}.png",
-                    )
-
-            # --- Sample-based metrics ---
-            for metric_name, metric_func in metrics_sample.items():
-                print(f"Calculating {metric_name} distance...")
-                dist_matrix = np.zeros((N_VARS, N_DOMAINS, N_DOMAINS))
-
-                for k in tqdm(range(N_VARS), desc=f"Variables for {metric_name}"):
-                    for i in range(N_DOMAINS):
-                        for j in range(i + 1, N_DOMAINS):
-
-                            # --- Add check for valid data ---
-                            samples_A_all_vars = data_cache[split][DOMAINS[i]]
-                            samples_B_all_vars = data_cache[split][DOMAINS[j]]
-
-                            if samples_A_all_vars.ndim < 4 or samples_B_all_vars.ndim < 4:
-                                if i == 0 and j == 1 and k == 0:  # Print only once
-                                    print(f"Warning: Data for {DOMAINS[i]} or {DOMAINS[j]} is invalid (ndim < 4).")
-                                    print(
-                                        f"Shapes: {DOMAINS[i]}={samples_A_all_vars.shape}, {DOMAINS[j]}={samples_B_all_vars.shape}"
-                                    )
-                                    print("Skipping comparison for this pair.")
-                                # This pair has failed-to-load data
-                                dist = np.nan
-                                dist_matrix[k, i, j] = dist
-                                dist_matrix[k, j, i] = dist
-                                continue
-
-                            samples_A = samples_A_all_vars[:, k].ravel()
-                            samples_B = samples_B_all_vars[:, k].ravel()
-
-                            # --- Conditional Normalization ---
-                            if analysis_type == "normalized":
-                                std_A = np.std(samples_A) + 1e-8
-                                if std_A > 1e-6:  # Only normalize if not constant
-                                    samples_A = (samples_A - np.mean(samples_A)) / std_A
-
-                                std_B = np.std(samples_B) + 1e-8
-                                if std_B > 1e-6:
-                                    samples_B = (samples_B - np.mean(samples_B)) / std_B
-
-                            # --- Subsampling for MMD ---
-                            dist_A = samples_A
-                            dist_B = samples_B
-                            if metric_name == "MMD_RBF":
-                                if len(dist_A) > MMD_SUBSAMPLE_SIZE:
-                                    dist_A = np.random.choice(dist_A, MMD_SUBSAMPLE_SIZE, replace=False)
-                                if len(dist_B) > MMD_SUBSAMPLE_SIZE:
-                                    dist_B = np.random.choice(dist_B, MMD_SUBSAMPLE_SIZE, replace=False)
-
-                            dist = metric_func(dist_A, dist_B)
-                            dist_matrix[k, i, j] = dist
-                            dist_matrix[k, j, i] = dist
-
-                np.save(f"{analysis_output_dir}/{metric_name}_{split}.npy", dist_matrix)
-                for k in range(N_VARS):
-                    plot_matrix(
-                        dist_matrix[k],
-                        f"{metric_name} Distance - {VAR_NAMES[k]} ({split}, {analysis_type})",
-                        DOMAINS,
-                        f"{analysis_output_dir}/{metric_name}_{split}_{VAR_NAMES[k]}.png",
-                    )
+            np.save(f"{analysis_output_dir}/{metric_name}_{split}.npy", dist_matrix)
+            for k in range(N_VARS):
+                plot_matrix(
+                    dist_matrix[k],
+                    f"{metric_name} Distance - {VAR_NAMES[k]} ({split}, {analysis_type})",
+                    DOMAINS,
+                    f"{analysis_output_dir}/{metric_name}_{split}_{VAR_NAMES[k]}.png",
+                )
 
         print(f"\n--- {analysis_type.upper()} analysis for {split} split complete ---")
-
     print("\n--- All covariate shift analyses complete ---")
 
 
 if __name__ == "__main__":
-    # Set multiprocessing start method for safety with torch/numpy
     torch.multiprocessing.set_start_method("spawn", force=True)
     main()

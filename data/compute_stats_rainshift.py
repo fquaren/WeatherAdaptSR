@@ -90,7 +90,7 @@ def compute_stats_for_domain(domain_name, data_root):
 
             data = ds_static[var]
             var_mean = float(data.mean().compute())
-            var_std = float(data.std().compute())  # Corrected: added ()
+            var_std = float(data.std().compute())
 
             stats[var] = (var_mean, var_std)
             print(f"    -> Mean: {var_mean:.4f}, Std: {var_std:.4f} (Time: {time.time()-t0:.2f}s)")
