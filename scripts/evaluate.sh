@@ -4,7 +4,7 @@
 #SBATCH --mail-user filippo.quarenghi@unil.ch
 
 #SBATCH --chdir /scratch/fquareng/
-#SBATCH --job-name train
+#SBATCH --job-name rainshift_generalization
 #SBATCH --output outputs/%j
 #SBATCH --error job_errors/%j
 
@@ -20,6 +20,9 @@
 source /users/fquareng/.bashrc
 micromamba activate dl-torch
 
+# Define project base path to avoid repetitive absolute paths
+BASE_DIR="/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
+
 DOMAINS=(
   "africa-south" "amazon-basin" "arabian-peninsula" "australasia-east"
   "blacksea" "cape-horn" "caribbean" "east-asia-north-east"
@@ -28,10 +31,17 @@ DOMAINS=(
   "southeastasia-west" "tibetan-plateau" "west-africa"
 )
 
-# micromamba -n dl-torch run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/compute_stats_rainshift.py
-
-# Phase 1: Train all 18 models independently
+echo "--- Evaluation ---"
 for SOURCE in "${DOMAINS[@]}"; do
-    echo "Training model on source domain: $SOURCE"
-    python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/train.py --source "$SOURCE"
+    for TARGET in "${DOMAINS[@]}"; do
+        echo "Evaluating model trained on $SOURCE against target $TARGET"
+        python ${BASE_DIR}/evaluate.py --action evaluate --source "$SOURCE" --target "$TARGET"
+    done
 done
+
+echo "--- Phase 3: Generalization Metrics Computation ---"
+# Adjust the w1_path to exactly where your pre-computed numpy array is saved
+W1_PATH="${BASE_DIR}/covariate_shift_analysis/normalized/Wasserstein_1D_test.npy"
+python ${BASE_DIR}/evaluate.py --action compute_metrics --w1_path "$W1_PATH"
+
+echo "Job completed successfully."
