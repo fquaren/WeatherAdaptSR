@@ -16,4 +16,4 @@
 
 source /users/fquareng/.bashrc
 micromamba activate dl-torch
-micromamba -n dl-torch run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/preprocessing_rainshift.py
+micromamba -n dl-torch run python /work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/data/compute_stats_rainshift.py

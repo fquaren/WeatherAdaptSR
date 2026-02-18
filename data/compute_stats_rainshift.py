@@ -7,8 +7,7 @@ import yaml
 
 # --- 1. CONFIGURATION ---
 # Load configuration
-current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, "configs/config_rainshift.yaml")
+config_path = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/configs/config_rainshift.yaml"
 with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 

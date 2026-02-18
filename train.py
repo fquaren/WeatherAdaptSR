@@ -7,29 +7,21 @@ from torch.utils.data import DataLoader
 import yaml
 import tqdm
 from data.dataset import ClimateSRDataset
-from model import UNet
+from deterministic_model import EDSRModel
 
 
 def main():
-    # Get path current directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Load configuration
-    config_path = os.path.join(current_dir, "configs/config_rainshift.yaml")
+    config_path = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/configs/config_rainshift.yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # --- 1. Configuration ---
     DEVICE = torch.device(config["DEVICE"] if torch.cuda.is_available() else "cpu")
     print(f"Using device: {config['DEVICE']}")
 
-    # Define domains
     DATA_ROOT = config["DATA_ROOT"]
-
-    # Load the list of all domains to train on
     DOMAIN_LIST = config["DOMAIN_LIST"]
 
-    # --- 2. Main Training Loop ---
     for domain in DOMAIN_LIST:
         print(f"\n{'='*60}")
         print(f"STARTING TRAINING FOR DOMAIN: {domain}")
@@ -40,8 +32,6 @@ def main():
             print(f"Warning: Path not found for domain {domain}. Skipping.")
             continue
 
-        # --- Load Per-Domain Stats ---
-        # Load the domain-specific normalization stats file
         stats_filename = f"stats_{domain}.json"
         stats_path = os.path.join(DATA_ROOT, stats_filename)
         try:
@@ -50,30 +40,26 @@ def main():
             print(f"Loaded domain-specific stats from: {stats_path}")
         except FileNotFoundError:
             print(f"Error: Stats file not found at {stats_path}")
-            print(f"Please run compute_stats.py first for all domains.")
-            print(f"Skipping domain {domain}.")
             continue
 
-        # --- 2a. DataLoaders (Instantiated per-domain) ---
         print(f"Loading data for {domain}...")
         try:
             train_dataset = ClimateSRDataset(
                 cluster_path=current_cluster_path,
                 split="train",
-                normalization_stats=stats,  # Pass the domain-specific stats
+                normalization_stats=stats,
                 validation_split_pct=0.2,
                 seed=42,
             )
             val_dataset = ClimateSRDataset(
                 cluster_path=current_cluster_path,
                 split="validation",
-                normalization_stats=stats,  # Pass the domain-specific stats
+                normalization_stats=stats,
                 validation_split_pct=0.2,
                 seed=42,
             )
         except Exception as e:
             print(f"Error loading dataset for {domain}: {e}")
-            print(f"Skipping domain {domain}.")
             continue
 
         train_loader = DataLoader(
@@ -90,14 +76,11 @@ def main():
             num_workers=config.get("NUM_WORKERS", 0),
             pin_memory=True,
         )
-        print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
 
-        # --- 2b. Model, Loss, and Optimizer (Instantiated per-domain) ---
         print("Initializing new model and optimizer...")
-        # Assuming 11 input channels (9 dynamic + 2 static)
-        # This must match the channels in your stats file
-        model = UNet(
-            in_channels=11,
+        model = EDSRModel(
+            dynamic_in_channels=9,
+            static_in_channels=2,
             out_channels=1,
         )
         model.to(DEVICE)
@@ -105,7 +88,9 @@ def main():
         loss_fn = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=config["LEARNING_RATE"])
 
-        # --- 2c. Training Loop (Per-domain) ---
+        # --- Gradient Scaler for mixed precision ---
+        scaler = torch.amp.GradScaler("cuda")
+
         NUM_EPOCHS = config["NUM_EPOCHS"]
         best_val_loss = float("inf")
 
@@ -116,41 +101,52 @@ def main():
                 enumerate(train_loader), desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Train]", total=len(train_loader)
             )
 
-            for batch_idx, (x, y) in train_pbar:
-                x, y = x.to(DEVICE), y.to(DEVICE)
+            # --- 3-tensor unpacking ---
+            for batch_idx, (x_dyn, x_stat, y) in train_pbar:
+                x_dyn = x_dyn.to(DEVICE)
+                x_stat = x_stat.to(DEVICE)
+                y = y.to(DEVICE)
 
                 with torch.amp.autocast(device_type="cuda"):
-                    predictions = model(x)
+                    # --- Dual input forward pass ---
+                    predictions = model(x_dyn, x_stat)
                     loss = loss_fn(predictions, y)
 
                 optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+
+                # --- Scaled backward pass ---
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
                 if batch_idx % 50 == 0:
                     train_pbar.set_postfix(loss=f"{loss.item():.4f}")
 
-            # --- 2d. Validation Loop (Per-domain) ---
             model.eval()
             total_val_loss = 0
             val_pbar = tqdm.tqdm(val_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", total=len(val_loader))
 
             with torch.no_grad():
-                for x_val, y_val in val_pbar:
-                    x_val, y_val = x_val.to(DEVICE), y_val.to(DEVICE)
+                # --- 3-tensor unpacking ---
+                for x_dyn_val, x_stat_val, y_val in val_pbar:
+                    x_dyn_val = x_dyn_val.to(DEVICE)
+                    x_stat_val = x_stat_val.to(DEVICE)
+                    y_val = y_val.to(DEVICE)
+
                     with torch.amp.autocast(device_type="cuda"):
-                        preds_val = model(x_val)
+                        # --- Dual input forward pass ---
+                        preds_val = model(x_dyn_val, x_stat_val)
                         val_loss = loss_fn(preds_val, y_val)
                     total_val_loss += val_loss.item()
 
             avg_val_loss = total_val_loss / len(val_loader)
             print(f"--- EPOCH {epoch+1} | DOMAIN {domain} | VALIDATION LOSS: {avg_val_loss:.6f} ---")
 
-            # --- 2e. Save Model (Per-domain) ---
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
-                save_filename = f"unet_baseline_{domain}.pth"
-                save_path = os.path.join(current_dir, "models", save_filename)  # Save to a 'models' subfolder
+                # --- Accurate naming convention ---
+                save_filename = f"edsr_baseline_{domain}.pth"
+                save_path = os.path.join(config["EXP_DIR"], "models", "EDSR", save_filename)
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
                 torch.save(model.state_dict(), save_path)
@@ -158,8 +154,7 @@ def main():
 
         print(f"\n--- COMPLETED TRAINING FOR {domain} ---")
 
-        # Clean up memory before next loop
-        del model, optimizer, train_dataset, val_dataset, train_loader, val_loader, stats
+        del model, optimizer, scaler, train_dataset, val_dataset, train_loader, val_loader, stats
         torch.cuda.empty_cache()
 
     print("\nAll domains trained successfully.")

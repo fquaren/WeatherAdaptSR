@@ -209,7 +209,7 @@ def main():
             print(f"\n--- Computing {metric_name} for {split} split on {device} ---")
             dist_matrix = np.zeros((N_VARS, N_DOMAINS, N_DOMAINS))
 
-            for k in tqdm(range(N_VARS), desc=f"Variables"):
+            for k in tqdm(range(N_VARS), desc="Variables"):
                 current_var = VAR_NAMES[k]
                 for i in range(N_DOMAINS):
                     for j in range(i + 1, N_DOMAINS):

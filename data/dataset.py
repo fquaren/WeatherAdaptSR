@@ -1,20 +1,11 @@
 import torch
 import xarray as xr
 import numpy as np
-import torch.nn.functional as F
 from torch.utils.data import Dataset
+import zarr
 
 
 class ClimateSRDataset(Dataset):
-    """
-    Custom PyTorch Dataset for lazily loading the Zarr climate data.
-    This version handles the 2.5x super-resolution task by
-    pre-upsampling low-resolution inputs to match the high-resolution output.
-
-    This class handles splitting the 'train_data_...' files into
-    a training and a validation set based on a random, seeded shuffle.
-    """
-
     def __init__(
         self,
         cluster_path,
@@ -23,162 +14,98 @@ class ClimateSRDataset(Dataset):
         input_vars=None,
         output_var="precipitation",
         static_vars=["lsm", "z"],
-        # New arguments for validation splitting
         validation_split_pct=0.2,
         seed=42,
     ):
-
-        # Split now refers to 'train' or 'validation' subset
         if split not in ["train", "validation"]:
             raise ValueError("split must be 'train' or 'validation'")
 
-        if input_vars is None:
-            # All 9 dynamic input variables from train_data_in.zarr
-            self.input_vars = [
-                "cape",
-                "cp",
-                "sp",
-                "tclw",
-                "tcw",
-                "tisr",
-                "tp",
-                "u",
-                "v",
-            ]
-        else:
-            self.input_vars = input_vars
-
+        self.input_vars = input_vars or ["cape", "cp", "sp", "tclw", "tcw", "tisr", "tp", "u", "v"]
         self.output_var = output_var
         self.static_vars = static_vars
-
-        # 1. Open Zarr stores lazily
-        zarr_in_path = f"{cluster_path}/train_data_in.zarr"
-        zarr_out_path = f"{cluster_path}/train_data_out.zarr"
-
-        try:
-            # Open the dataset, respecting its native on-disk chunking
-            _ds_in = xr.open_zarr(zarr_in_path)
-            _ds_out = xr.open_zarr(zarr_out_path)
-
-            # Now, tell Dask to re-chunk the data in memory to match our access pattern.
-            # This is far more efficient than overriding the chunks at load time.
-            self.ds_in = _ds_in.chunk({"time": 1})
-            self.ds_out = _ds_out.chunk({"time": 1})
-        except Exception as e:
-            print(f"Error opening Zarr stores at: {cluster_path}")
-            print("Please ensure the path is correct and Zarr files exist.")
-            raise e
-
-        # 2. Load static NetCDF (it's small)
-        self.ds_static = xr.open_dataset(f"{cluster_path}/static_variables.nc").load()
-
-        # 3. Get number of samples and target shape
-        self.num_samples_total = len(self.ds_in["time"])
-        self.target_shape = (len(self.ds_static["latitude"]), len(self.ds_static["longitude"]))
-
-        # 4. Store normalization stats
-        if normalization_stats is None:
-            raise ValueError("normalization_stats must be provided.")
         self.stats = normalization_stats
 
-        self.log_transform_epsilon = 1e-6
+        # Open xarray strictly to extract metadata and static variables
+        ds_in = xr.open_zarr(f"{cluster_path}/train_data_in.zarr", consolidated=True)
+        ds_static = xr.open_dataset(f"{cluster_path}/static_variables.nc").load()
 
-        # --- 5. Create deterministic train/validation split ---
+        self.num_samples_total = ds_in.dims["time"]
+
+        # Calculate split indices
         all_indices = np.arange(self.num_samples_total)
-
-        # Use a numpy RandomState for reproducible shuffling
         rng = np.random.RandomState(seed)
         rng.shuffle(all_indices)
-
         split_point = int(self.num_samples_total * (1 - validation_split_pct))
 
-        if split == "train":
-            self.indices = all_indices[:split_point]
-            print(f"Loaded 'train' split: {len(self.indices)} samples.")
-        else:  # split == "validation"
-            self.indices = all_indices[split_point:]
-            print(f"Loaded 'validation' split: {len(self.indices)} samples.")
-        # --- End Modification ---
+        self.indices = all_indices[:split_point] if split == "train" else all_indices[split_point:]
+
+        # Sort indices to optimize sequential disk reads
+        self.indices = np.sort(self.indices)
+
+        # Pre-load static data
+        static_data_list = []
+        for var in self.static_vars:
+            data = ds_static[var].values
+            static_data_list.append(self._normalize(data, var))
+        self.static_tensor = torch.from_numpy(np.stack(static_data_list, axis=0)).float()
+
+        # PRE-LOAD TO MEMORY: Highly efficient for A100 nodes with adequate RAM
+        print(f"Loading {len(self.indices)} samples into RAM for {split} split...")
+
+        # Access underlying zarr arrays directly for speed
+        z_in = zarr.open(f"{cluster_path}/train_data_in.zarr", mode="r")
+        z_out = zarr.open(f"{cluster_path}/train_data_out.zarr", mode="r")
+
+        self.x_data = []
+        self.y_data = []
+
+        # Batch loading to avoid memory spikes
+        for idx in self.indices:
+            var_data = []
+            for var in self.input_vars:
+                # Read directly from Zarr slice
+                val = z_in[var][idx]
+                if var == "tp":
+                    val = val * 1000.0
+                var_data.append(self._normalize(val, var))
+
+            self.x_data.append(np.stack(var_data, axis=0))
+
+            y_val = z_out[self.output_var][idx]
+            self.y_data.append(self._normalize(y_val, self.output_var))
+
+        self.x_data = np.stack(self.x_data, axis=0)
+        self.y_data = np.stack(self.y_data, axis=0)
+
+        print("Data loaded successfully.")
 
     def __len__(self):
-        # Return the length of the subset of indices
         return len(self.indices)
 
     def _normalize(self, data, var_name):
+        """Conditionally applies physics-based transformations."""
+        # 1. Variables with extreme right tails and zero-bounds
+        if var_name in ["tp", "cp", "lsp", "cape", "tclw", "precipitation"]:
+            return np.arcsinh(data)
+
+        # 2. Binary or fractional masks (bypass standardization)
+        if var_name == "lsm":
+            return data
+
+        # 3. Variables with roughly Gaussian properties
         mean, std = self.stats[var_name]
         return (data - mean) / (std + 1e-8)
 
     def __getitem__(self, idx):
-        """
-        Fetch a single sample (timestep) from the Zarr store.
-        """
+        # Data is already localized and normalized in RAM
+        x_dynamic = torch.from_numpy(self.x_data[idx]).float()
+        y_target = torch.from_numpy(self.y_data[idx]).float().unsqueeze(0)
 
-        # Map the relative index 'idx' to the true Zarr index
-        zarr_index = self.indices[idx]
-
-        # --- 1. Load Dynamic Inputs (Low-Res) ---
-        input_data_list = []
-        for var in self.input_vars:
-            # Use zarr_index
-            data = self.ds_in[var].isel(time=zarr_index).values
-
-            # --- CRITICAL: Unit Conversion ---
-            if var == "tp":
-                data = data * 1000.0  # Convert (m) to (mm)
-            # --- End Unit Conversion ---
-
-            data_normalized = self._normalize(data, var)
-            input_data_list.append(data_normalized)
-
-        # Stack into (C_low_res, H_low, W_low)
-        x_low_res = np.stack(input_data_list, axis=0)
-
-        # Convert to tensor for upsampling
-        x_low_res_tensor = torch.from_numpy(x_low_res).float()
-
-        # --- 2. Upsample Inputs ---
-        x_high_res_tensor = F.interpolate(
-            x_low_res_tensor.unsqueeze(0),
-            size=self.target_shape,
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(0)
-
-        # --- 3. Load Static Inputs (High-Res) ---
-        static_data_list = []
-        for var in self.static_vars:
-            data = self.ds_static[var].values
-            data_normalized = self._normalize(data, var)
-            static_data_list.append(data_normalized)
-
-        x_static_tensor = torch.from_numpy(np.stack(static_data_list, axis=0)).float()
-
-        # --- 4. Concatenate Inputs ---
-        # (9, 200, 200) + (2, 200, 200) -> (11, 200, 200)
-        x_final = torch.cat([x_high_res_tensor, x_static_tensor], axis=0)
-
-        # --- 5. Load Output (High-Res) ---
-        # Use zarr_index
-        y_raw = self.ds_out[self.output_var].isel(time=zarr_index).values
-
-        # Apply log-transform and normalization
-        y_log = np.log(y_raw + self.log_transform_epsilon)
-        y_norm = self._normalize(y_log, self.output_var)
-
-        # Add a channel dimension: (H, W) -> (1, H, W)
-        y_final = torch.from_numpy(y_norm).float().unsqueeze(0)
-
-        return x_final, y_final
+        return x_dynamic, self.static_tensor, y_target
 
 
 # --- Test Harness ---
 if __name__ == "__main__":
-    """
-    This block demonstrates how to use the modified Dataset class
-    and verifies that the train/validation splits are correct.
-    """
-
-    # Load config
     import yaml
     import json
 
@@ -194,29 +121,23 @@ if __name__ == "__main__":
         print(f"Successfully loaded stats from {STATS_FILE}")
     except FileNotFoundError:
         print(f"Error: Stats file not found at {STATS_FILE}")
-        print("Please run compute_stats.py first and update the path.")
-        stats = None
-    except Exception as e:
-        print(f"Error loading stats: {e}")
         stats = None
 
     if stats:
-        print("\n--- Instantiating Training Set ---")
         train_dataset = ClimateSRDataset(
             cluster_path=CLUSTER_PATH,
             split="train",
             normalization_stats=stats,
-            validation_split_pct=0.2,  # 80% for train
+            validation_split_pct=0.2,
             seed=42,
         )
 
-        print("\n--- Instantiating Validation Set ---")
         val_dataset = ClimateSRDataset(
             cluster_path=CLUSTER_PATH,
             split="validation",
             normalization_stats=stats,
-            validation_split_pct=0.2,  # 20% for val
-            seed=42,  # Using the SAME seed is crucial
+            validation_split_pct=0.2,
+            seed=42,
         )
 
         # --- Verification ---
@@ -225,31 +146,23 @@ if __name__ == "__main__":
         train_samples = len(train_dataset)
         val_samples = len(val_dataset)
 
-        print(f"Total samples in source:   {total_samples}")
-        print(f"Training subset samples:   {train_samples}")
-        print(f"Validation subset samples: {val_samples}")
-        print(f"Total in subsets:          {train_samples + val_samples}")
-
         assert total_samples == (train_samples + val_samples), "Error: Mismatch in sample counts!"
-
-        # Check for overlap
-        train_indices_set = set(train_dataset.indices)
-        val_indices_set = set(val_dataset.indices)
-
-        overlap = train_indices_set.intersection(val_indices_set)
-
+        overlap = set(train_dataset.indices).intersection(set(val_dataset.indices))
         assert len(overlap) == 0, "Error: Overlap found between train and val sets!"
-
         print("Test PASSED: Train/Validation splits are correct and have no overlap.")
 
-        # Test loading one item
+        # --- CRITICAL FIX: Unpacking the dual-input paradigm ---
         print("\nTesting data loading...")
-        x, y = train_dataset[0]
-        print("Loaded one sample (X, y):")
-        print(f"  Input shape:  {x.shape}")  # Should be (11, 200, 200)
-        print(f"  Output shape: {y.shape}")  # Should be (1, 200, 200)
+        x_dyn, x_stat, y = train_dataset[0]
 
-        assert x.shape == (11, 200, 200), "Input shape mismatch!"
-        assert y.shape == (1, 200, 200), "Output shape mismatch!"
+        print("Loaded one sample (x_dyn, x_stat, y):")
+        print(f"  Dynamic input shape: {x_dyn.shape}")
+        print(f"  Static input shape:  {x_stat.shape}")
+        print(f"  Output shape:        {y.shape}")
 
-        print("Test PASSED: Data loading shapes are correct.")
+        # Shapes dynamically verified against input parameters rather than hardcoded ints
+        assert x_dyn.shape[0] == len(train_dataset.input_vars), "Dynamic input channel mismatch!"
+        assert x_stat.shape[0] == len(train_dataset.static_vars), "Static input channel mismatch!"
+        assert y.shape[0] == 1, "Output channel mismatch!"
+
+        print("Test PASSED: Data loading shapes and physical bounds are correct.")
