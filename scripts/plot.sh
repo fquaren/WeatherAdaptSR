@@ -19,10 +19,29 @@ source /users/fquareng/.bashrc
 micromamba activate dl-torch
 
 BASE_DIR="/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR"
-INPUT_CSV="${BASE_DIR}/results/detailed_generalization_metrics.csv"
-OUTPUT_DIR="${BASE_DIR}/plots"
+ARCHITECTURE="unet"
 
-echo "--- Generating Evaluation Plots ---"
-python ${BASE_DIR}/plot_generalization.py --input_csv "$INPUT_CSV" --output_dir "$OUTPUT_DIR"
+# Define the adaptation methods to plot
+METHODS=(
+    "none" 
+    "coral" 
+    "mmd"
+    "sinkhorn"
+    "spectral"
+    "fourier"
+)
+
+echo "====================================================="
+echo "Generating Evaluation Plots for $ARCHITECTURE"
+echo "====================================================="
+
+for ADAPTATION_METHOD in "${METHODS[@]}"; do
+    echo "--- Processing method: $ADAPTATION_METHOD ---"
+    
+    python ${BASE_DIR}/plot.py \
+        --architecture "$ARCHITECTURE" \
+        --adaptation_method "$ADAPTATION_METHOD"
+        
+done
 
 echo "Plotting complete."

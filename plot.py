@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import yaml
+from glob import glob
 
 # Force non-interactive backend for headless compute nodes
 matplotlib.use("Agg")
@@ -71,52 +73,167 @@ def plot_source_ranking(dataframe, save_path):
     plt.close()
 
 
+def plot_spatial_samples(npz_file, save_path_prefix):
+    """Generates grids comparing ground truth, prediction, absolute error, and the DEM."""
+    data = np.load(npz_file)
+
+    # Correction: match the evaluation script key
+    has_dem = "dem" in data
+    ncols = 4 if has_dem else 3
+    figsize = (20, 20) if has_dem else (15, 20)
+
+    if has_dem:
+        dem_arr = data["dem"]
+
+    # Render Best 5
+    fig_best, axes_best = plt.subplots(5, ncols, figsize=figsize)
+    fig_best.suptitle("Top 5 Best Spatial Predictions", fontsize=20)
+
+    for i in range(5):
+        try:
+            true_arr = data[f"best_true_{i}"]
+            pred_arr = data[f"best_pred_{i}"]
+        except KeyError:
+            break  # Failsafe if fewer than 5 samples exist
+
+        error_arr = np.abs(pred_arr - true_arr)
+        vmax = max(np.max(true_arr), np.max(pred_arr))
+
+        sns.heatmap(true_arr, ax=axes_best[i, 0], cmap="mako_r", cbar_kws={"label": "mm"}, vmin=0, vmax=vmax)
+        axes_best[i, 0].set_title(f"Rank {i+1}: Ground Truth")
+        axes_best[i, 0].axis("off")
+
+        sns.heatmap(pred_arr, ax=axes_best[i, 1], cmap="mako_r", cbar_kws={"label": "mm"}, vmin=0, vmax=vmax)
+        axes_best[i, 1].set_title(f"Rank {i+1}: Prediction")
+        axes_best[i, 1].axis("off")
+
+        sns.heatmap(error_arr, ax=axes_best[i, 2], cmap="rocket_r", cbar_kws={"label": "absolute error (mm)"})
+        axes_best[i, 2].set_title(f"Rank {i+1}: Error")
+        axes_best[i, 2].axis("off")
+
+        if has_dem:
+            sns.heatmap(dem_arr, ax=axes_best[i, 3], cmap="terrain", cbar_kws={"label": "normalized elevation"})
+            axes_best[i, 3].set_title(f"Rank {i+1}: Target DEM")
+            axes_best[i, 3].axis("off")
+
+    plt.tight_layout()
+    fig_best.savefig(f"{save_path_prefix}_best.png", dpi=300)
+    plt.close(fig_best)
+
+    # Render Worst 5
+    fig_worst, axes_worst = plt.subplots(5, ncols, figsize=figsize)
+    fig_worst.suptitle("Top 5 Worst Spatial Predictions", fontsize=20)
+
+    for i in range(5):
+        try:
+            true_arr = data[f"worst_true_{i}"]
+            pred_arr = data[f"worst_pred_{i}"]
+        except KeyError:
+            break
+
+        error_arr = np.abs(pred_arr - true_arr)
+        vmax = max(np.max(true_arr), np.max(pred_arr))
+
+        sns.heatmap(true_arr, ax=axes_worst[i, 0], cmap="mako_r", cbar_kws={"label": "mm"}, vmin=0, vmax=vmax)
+        axes_worst[i, 0].set_title(f"Rank {-(i+1)}: Ground Truth")
+        axes_worst[i, 0].axis("off")
+
+        sns.heatmap(pred_arr, ax=axes_worst[i, 1], cmap="mako_r", cbar_kws={"label": "mm"}, vmin=0, vmax=vmax)
+        axes_worst[i, 1].set_title(f"Rank {-(i+1)}: Prediction")
+        axes_worst[i, 1].axis("off")
+
+        sns.heatmap(error_arr, ax=axes_worst[i, 2], cmap="rocket_r", cbar_kws={"label": "absolute error (mm)"})
+        axes_worst[i, 2].set_title(f"Rank {-(i+1)}: Error")
+        axes_worst[i, 2].axis("off")
+
+        if has_dem:
+            sns.heatmap(dem_arr, ax=axes_worst[i, 3], cmap="terrain", cbar_kws={"label": "normalized elevation"})
+            axes_worst[i, 3].set_title(f"Rank {-(i+1)}: Target DEM")
+            axes_worst[i, 3].axis("off")
+
+    plt.tight_layout()
+    fig_worst.savefig(f"{save_path_prefix}_worst.png", dpi=300)
+    plt.close(fig_worst)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_csv", type=str, default="results/detailed_generalization_metrics.csv")
-    parser.add_argument("--output_dir", type=str, default="plots")
+    parser.add_argument(
+        "--architecture",
+        type=str,
+        choices=["unet", "consistency"],
+        required=True,
+        help="Specify the model architecture to plot results for.",
+    )
+    # Correction: Add the adaptation method argument to align with the experimental matrix
+    parser.add_argument(
+        "--adaptation_method",
+        type=str,
+        choices=["none", "coral", "mmd", "sinkhorn", "spectral", "fourier"],
+        required=True,
+        help="Specify the evaluated UDA method.",
+    )
+    parser.add_argument("--input_csv", type=str, default=None)
+    parser.add_argument("--output_dir", type=str, default=None)
+    parser.add_argument("--samples_dir", type=str, default=None)
     args = parser.parse_args()
 
-    if not os.path.exists(args.input_csv):
-        raise FileNotFoundError(f"Input file {args.input_csv} not found. Run the evaluation script first.")
+    config_path = "/work/FAC/FGSE/IDYST/tbeucler/downscaling/fquareng/WeatherAdaptSR/configs/config_rainshift.yaml"
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    df = pd.read_csv(args.input_csv)
+    # Correction: Include adaptation_method in the path trees
+    base_res_dir = os.path.join(config["EXP_DIR"], "results", args.architecture, args.adaptation_method)
 
-    print("Generating visualizations...")
+    input_csv = args.input_csv or os.path.join(base_res_dir, "detailed_generalization_metrics.csv")
+    output_dir = args.output_dir or os.path.join(config["EXP_DIR"], "plots", args.architecture, args.adaptation_method)
+    samples_dir = args.samples_dir or os.path.join(base_res_dir, "samples")
 
-    # 1. Physical RMSE Heatmap
-    plot_heatmap(
-        df, "rmse", "Target Physical Error (RMSE)", "rocket_r", os.path.join(args.output_dir, "heatmap_rmse.png")
-    )
+    os.makedirs(output_dir, exist_ok=True)
 
-    # 2. Wasserstein Distance Heatmap
-    plot_heatmap(
-        df,
-        "wasserstein_1d",
-        "Marginal Distribution Shift (1D Wasserstein)",
-        "mako",
-        os.path.join(args.output_dir, "heatmap_wasserstein.png"),
-    )
+    # --- Matrix Visualizations ---
+    if os.path.exists(input_csv):
+        df = pd.read_csv(input_csv)
+        print(f"Generating matrix visualizations for {args.architecture.upper()}...")
+        plot_heatmap(
+            df, "rmse", "Target Physical Error (RMSE)", "rocket_r", os.path.join(output_dir, "heatmap_rmse.png")
+        )
+        plot_heatmap(
+            df,
+            "wasserstein_1d",
+            "Marginal Distribution Shift (1D Wasserstein)",
+            "mako",
+            os.path.join(output_dir, "heatmap_wasserstein.png"),
+        )
+        plot_heatmap(
+            df,
+            "ngg",
+            "Normalized Generalization Gap (NGG)",
+            "viridis",
+            os.path.join(output_dir, "heatmap_ngg.png"),
+            robust=True,
+        )
+        plot_correlation_scatter(df, os.path.join(output_dir, "scatter_w1_vs_rmse.png"))
+        plot_source_ranking(df, os.path.join(output_dir, "ranking_ngg.png"))
+    else:
+        print(f"Warning: {input_csv} not found. Skipping matrix plots.")
 
-    # 3. Normalized Generalization Gap Heatmap (using robust=True to ignore extreme outliers in color scaling)
-    plot_heatmap(
-        df,
-        "ngg",
-        "Normalized Generalization Gap (NGG)",
-        "vlag",
-        os.path.join(args.output_dir, "heatmap_ngg.png"),
-        robust=True,
-    )
+    # --- Sample Visualizations ---
+    samples_out_dir = os.path.join(output_dir, "spatial_samples")
+    os.makedirs(samples_out_dir, exist_ok=True)
 
-    # 4. Correlation Scatter Plot
+    npz_files = glob(os.path.join(samples_dir, "*.npz"))
+    npz_files = glob(os.path.join(samples_dir, "*.npz"))
+    if npz_files:
+        print(f"Generating {len(npz_files)} spatial sample plots...")
+        for npz_file in npz_files:
+            filename_prefix = os.path.basename(npz_file).replace(".npz", "")
+            save_path_prefix = os.path.join(samples_out_dir, filename_prefix)
+            plot_spatial_samples(npz_file, save_path_prefix)
+    else:
+        print(f"Warning: No sample data found in {samples_dir}. Run evaluation first.")
 
-    plot_correlation_scatter(df, os.path.join(args.output_dir, "scatter_w1_vs_rmse.png"))
-
-    # 5. Source Domain Robustness Ranking
-    plot_source_ranking(df, os.path.join(args.output_dir, "ranking_ngg.png"))
-
-    print(f"All plots successfully generated and saved to {args.output_dir}/")
+    print(f"All available plots successfully generated in {output_dir}/")
 
 
 if __name__ == "__main__":
